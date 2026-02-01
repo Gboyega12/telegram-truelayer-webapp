@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>BOCY - Connect Bank</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #f0f2f5;
+      margin: 0;
+      padding: 20px;
+      color: #333;
+      text-align: center;
+    }
+    h1 { color: #0066cc; margin-bottom: 10px; }
+    p { line-height: 1.5; margin: 20px 0; }
+    .btn {
+      display: inline-block;
+      background: #0066cc;
+      color: white;
+      padding: 16px 32px;
+      font-size: 18px;
+      border-radius: 12px;
+      text-decoration: none;
+      margin: 20px 0;
+      cursor: pointer;
+      border: none;
+      width: 90%;
+      max-width: 320px;
+    }
+    .btn:hover { background: #0055aa; }
+    .note {
+      font-size: 14px;
+      color: #666;
+      margin-top: 40px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>🔐 Connect Your Bank</h1>
+
+  <p>
+    Link your bank account securely with TrueLayer.<br>
+    We'll never see your login details.
+  </p>
+
+  <button id="connectBtn" class="btn">Start Connection</button>
+
+  <p class="note">
+    After you click, your bank page will open in your default browser (Safari/Chrome).<br>
+    Complete login there → come back here or check Telegram for confirmation.<br><br>
+    <strong>Tip:</strong> If nothing happens, tap the button again or close/reopen this window.
+  </p>
+
+  <script>
+    // Initialize Telegram Web App
+    const tg = window.Telegram.WebApp;
+    tg.ready();
+    tg.expand(); // make it full screen
+
+    // Get user info from Telegram (optional — you can pass userId via query if needed)
+    const user = tg.initDataUnsafe.user || {};
+    const userId = user.id ? user.id.toString() : 'unknown';
+
+    // Your TrueLayer config — CHANGE THESE VALUES
+    const CLIENT_ID = 'bocy-9c3edc'; // ← replace with bocy-9c3edc or your live ID
+    const REDIRECT_URI = 'https://agenticpersonal.app.n8n.cloud/webhook/truelayer-callback';
+    const SCOPES = 'info accounts transactions balance cards offline_access';
+    const PROVIDERS = 'uk-ob-all uk-oauth-all';
+
+    // Build the TrueLayer auth URL
+    const authUrl = `https://auth.truelayer.com/connect/authorize?` +
+      `response_type=code` +
+      `&client_id=${CLIENT_ID}` +
+      `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
+      `&scope=${encodeURIComponent(SCOPES)}` +
+      `&state=${userId}` +
+      `&providers=${encodeURIComponent(PROVIDERS)}`;
+
+    // Button click → open in system browser / new tab
+    document.getElementById('connectBtn').addEventListener('click', () => {
+      // Try to open in system browser (works in some WebViews)
+      window.open(authUrl, '_system') || window.open(authUrl, '_blank');
+      
+      // Optional: Show feedback
+      document.getElementById('connectBtn').textContent = 'Opening bank page...';
+      
+      // Optional: close Web App after short delay (user can still see Telegram)
+      setTimeout(() => {
+        tg.close();
+      }, 2500);
+    });
+
+    // Optional: Show user info (debug / nice to have)
+    console.log('Telegram user:', user);
+  </script>
+
+</body>
+</html>
