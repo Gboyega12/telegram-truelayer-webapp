@@ -24,958 +24,406 @@
         input::placeholder{color:var(--muted)}
         .section-title{font-family:'Space Mono',monospace;font-size:0.65rem;letter-spacing:0.15em;color:var(--accent);margin-bottom:0.75rem;text-transform:uppercase}
         .card-box{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1.25rem;margin-bottom:1rem}
+        .trust-badge{display:inline-flex;align-items:center;gap:0.4rem;padding:0.4rem 0.75rem;background:rgba(114,232,176,0.06);border:1px solid rgba(114,232,176,0.15);border-radius:20px;font-size:0.7rem;color:var(--mint)}
+        .file-chip{display:inline-flex;align-items:center;gap:0.4rem;padding:0.3rem 0.6rem;background:var(--surface);border:1px solid var(--border);border-radius:4px;font-size:0.7rem;color:var(--text2);margin:0.25rem}
+        .file-chip button{background:none;border:none;color:var(--coral);cursor:pointer;padding:0;margin-left:0.3rem;font-size:0.8rem}
+        .trait-tag{display:inline-flex;align-items:center;gap:0.3rem;padding:0.25rem 0.6rem;background:rgba(232,200,114,0.08);border:1px solid rgba(232,200,114,0.15);border-radius:12px;font-size:0.75rem;color:var(--accent);margin:0.2rem}
     </style>
 </head>
 <body>
 <canvas id="ascii-bg"></canvas>
 <div id="root"></div>
 <script type="text/babel">
-const {useState, useEffect, useRef} = React;
+const {useState,useEffect,useRef}=React;
+const CONFIG={googleScript:'https://script.google.com/macros/s/AKfycbxwOJ7DwZo4z3jiW25aH6nu5cC3qkIQs-GIizz0-xyeaoxe5Hdxg1TK3jxl_K1yJpIFRg/exec',landingPage:'https://bocy.io'};
+const UK_BENCHMARKS={subscriptions:{count:5,monthly:52},foodDelivery:68,savingsRate:11};
 
-const CONFIG = {
-    googleScript: 'https://script.google.com/macros/s/AKfycbxwOJ7DwZo4z3jiW25aH6nu5cC3qkIQs-GIizz0-xyeaoxe5Hdxg1TK3jxl_K1yJpIFRg/exec'
+const ARCHETYPE_ASCII={
+subscription_collector:"   [=] [=] [=]\\n   [=] [=] [=]\\n   [=] [=] [=]",
+convenience_seeker:"     ~[FAST]~\\n    /        \\\\\\n   [  O  O  ]",
+lifestyle_investor:"    *  .  *\\n   . \\\\__/ .\\n    *  .  *",
+quiet_builder:"       /\\\\\\n      /  \\\\\\n     / $$ \\\\\\n    /______\\\\",
+edge_walker:"   ~~~~~~~~~\\n   | O  O |\\n   ~~~~~~~~~",
+debt_juggler:"    O   O   O\\n     \\\\ | /\\n      \\\\|/\\n       *",
+balanced_realist:"   +-------+\\n   |  ===  |\\n   +-------+"
 };
 
-const UK_BENCHMARKS = {subscriptions: {count: 5, monthly: 52}, foodDelivery: 68, savingsRate: 11, groceries: 280, transport: 180};
 
-// Background animation
-const initBg = () => {
-    const c = document.getElementById('ascii-bg');
-    const ctx = c.getContext('2d');
-    const chars = ['·','•','○','●','+','✦'];
-    const particles = [];
-    const resize = () => { c.width = innerWidth; c.height = innerHeight; };
-    for (let i = 0; i < 70; i++) {
-        particles.push({
-            x: Math.random() * innerWidth,
-            y: Math.random() * innerHeight,
-            char: chars[Math.floor(Math.random() * chars.length)],
-            size: Math.random() * 8 + 5,
-            opacity: Math.random() * 0.1 + 0.02,
-            vx: (Math.random() - 0.5) * 0.06,
-            vy: (Math.random() - 0.5) * 0.06,
-            pulse: Math.random() * Math.PI * 2,
-            ps: Math.random() * 0.01 + 0.003
-        });
-    }
-    const draw = () => {
-        ctx.clearRect(0, 0, c.width, c.height);
-        particles.forEach(p => {
-            p.x += p.vx; p.y += p.vy; p.pulse += p.ps;
-            if (p.x < 0) p.x = c.width; if (p.x > c.width) p.x = 0;
-            if (p.y < 0) p.y = c.height; if (p.y > c.height) p.y = 0;
-            ctx.fillStyle = 'rgba(232,200,114,' + (p.opacity * (0.6 + Math.sin(p.pulse) * 0.4)) + ')';
-            ctx.font = p.size + 'px "Space Mono"';
-            ctx.textAlign = 'center';
-            ctx.fillText(p.char, p.x, p.y);
-        });
-        requestAnimationFrame(draw);
-    };
-    resize();
-    addEventListener('resize', resize);
-    draw();
+// MERCHANT DATABASE - Strict isSubscription flags
+const MERCHANT_DB={
+// SUBSCRIPTIONS (isSubscription: true)
+'netflix':{name:'Netflix',category:'Subscriptions',isSubscription:true},
+'spotify':{name:'Spotify',category:'Subscriptions',isSubscription:true},
+'disney+':{name:'Disney+',category:'Subscriptions',isSubscription:true},
+'disney plus':{name:'Disney+',category:'Subscriptions',isSubscription:true},
+'amazon prime video':{name:'Prime Video',category:'Subscriptions',isSubscription:true},
+'prime video':{name:'Prime Video',category:'Subscriptions',isSubscription:true},
+'apple tv':{name:'Apple TV+',category:'Subscriptions',isSubscription:true},
+'apple music':{name:'Apple Music',category:'Subscriptions',isSubscription:true},
+'youtube premium':{name:'YouTube Premium',category:'Subscriptions',isSubscription:true},
+'youtube music':{name:'YouTube Music',category:'Subscriptions',isSubscription:true},
+'now tv':{name:'NOW TV',category:'Subscriptions',isSubscription:true},
+'audible':{name:'Audible',category:'Subscriptions',isSubscription:true},
+'openai':{name:'ChatGPT',category:'Subscriptions',isSubscription:true},
+'chatgpt':{name:'ChatGPT',category:'Subscriptions',isSubscription:true},
+'anthropic':{name:'Claude',category:'Subscriptions',isSubscription:true},
+'claude':{name:'Claude',category:'Subscriptions',isSubscription:true},
+'midjourney':{name:'Midjourney',category:'Subscriptions',isSubscription:true},
+'adobe':{name:'Adobe',category:'Subscriptions',isSubscription:true},
+'canva':{name:'Canva',category:'Subscriptions',isSubscription:true},
+'figma':{name:'Figma',category:'Subscriptions',isSubscription:true},
+'notion':{name:'Notion',category:'Subscriptions',isSubscription:true},
+'microsoft 365':{name:'Microsoft 365',category:'Subscriptions',isSubscription:true},
+'office 365':{name:'Microsoft 365',category:'Subscriptions',isSubscription:true},
+'google one':{name:'Google One',category:'Subscriptions',isSubscription:true},
+'dropbox':{name:'Dropbox',category:'Subscriptions',isSubscription:true},
+'nordvpn':{name:'NordVPN',category:'Subscriptions',isSubscription:true},
+'expressvpn':{name:'ExpressVPN',category:'Subscriptions',isSubscription:true},
+'lovable':{name:'Lovable',category:'Subscriptions',isSubscription:true},
+'cursor':{name:'Cursor',category:'Subscriptions',isSubscription:true},
+'headspace':{name:'Headspace',category:'Subscriptions',isSubscription:true},
+'calm':{name:'Calm',category:'Subscriptions',isSubscription:true},
+'strava':{name:'Strava',category:'Subscriptions',isSubscription:true},
+'peloton':{name:'Peloton',category:'Subscriptions',isSubscription:true},
+'pure gym':{name:'PureGym',category:'Subscriptions',isSubscription:true},
+'puregym':{name:'PureGym',category:'Subscriptions',isSubscription:true},
+'the gym':{name:'The Gym',category:'Subscriptions',isSubscription:true},
+'david lloyd':{name:'David Lloyd',category:'Subscriptions',isSubscription:true},
+'skillshare':{name:'Skillshare',category:'Subscriptions',isSubscription:true},
+'masterclass':{name:'MasterClass',category:'Subscriptions',isSubscription:true},
+'duolingo':{name:'Duolingo',category:'Subscriptions',isSubscription:true},
+
+// DEBT PAYMENTS (isSubscription: false)
+'american express':{name:'American Express',category:'Debt Payments',subcategory:'Credit Card',isSubscription:false},
+'amex':{name:'American Express',category:'Debt Payments',subcategory:'Credit Card',isSubscription:false},
+'capital one':{name:'Capital One',category:'Debt Payments',subcategory:'Credit Card',isSubscription:false},
+'capitalone':{name:'Capital One',category:'Debt Payments',subcategory:'Credit Card',isSubscription:false},
+'barclaycard':{name:'Barclaycard',category:'Debt Payments',subcategory:'Credit Card',isSubscription:false},
+'mbna':{name:'MBNA',category:'Debt Payments',subcategory:'Credit Card',isSubscription:false},
+'aqua':{name:'Aqua',category:'Debt Payments',subcategory:'Credit Card',isSubscription:false},
+'vanquis':{name:'Vanquis',category:'Debt Payments',subcategory:'Credit Card',isSubscription:false},
+'klarna':{name:'Klarna',category:'Debt Payments',subcategory:'BNPL',isSubscription:false},
+'clearpay':{name:'Clearpay',category:'Debt Payments',subcategory:'BNPL',isSubscription:false},
+'afterpay':{name:'Afterpay',category:'Debt Payments',subcategory:'BNPL',isSubscription:false},
+'zilch':{name:'Zilch',category:'Debt Payments',subcategory:'BNPL',isSubscription:false},
+'laybuy':{name:'Laybuy',category:'Debt Payments',subcategory:'BNPL',isSubscription:false},
+
+// TRANSFERS (isSubscription: false)
+'transfer to':{name:'Transfer',category:'Transfers',isSubscription:false},
+'transfer from':{name:'Transfer',category:'Transfers',isSubscription:false},
+'standing order':{name:'Standing Order',category:'Transfers',isSubscription:false},
+'faster payment':{name:'Faster Payment',category:'Transfers',isSubscription:false},
+'pot transfer':{name:'Pot Transfer',category:'Transfers',isSubscription:false},
+
+// TRANSPORT (isSubscription: false)
+'tfl':{name:'TfL',category:'Transport',isSubscription:false},
+'oyster':{name:'Oyster',category:'Transport',isSubscription:false},
+'trainline':{name:'Trainline',category:'Transport',isSubscription:false},
+'uber':{name:'Uber',category:'Transport',isSubscription:false},
+'bolt':{name:'Bolt',category:'Transport',isSubscription:false},
+'addison lee':{name:'Addison Lee',category:'Transport',isSubscription:false},
+
+// FOOD DELIVERY (isSubscription: false)
+'deliveroo':{name:'Deliveroo',category:'Food Delivery',isSubscription:false},
+'uber eats':{name:'Uber Eats',category:'Food Delivery',isSubscription:false},
+'ubereats':{name:'Uber Eats',category:'Food Delivery',isSubscription:false},
+'just eat':{name:'Just Eat',category:'Food Delivery',isSubscription:false},
+'justeat':{name:'Just Eat',category:'Food Delivery',isSubscription:false},
+
+// GROCERIES
+'tesco':{name:'Tesco',category:'Groceries',isSubscription:false},
+'sainsbury':{name:'Sainsburys',category:'Groceries',isSubscription:false},
+'asda':{name:'ASDA',category:'Groceries',isSubscription:false},
+'morrisons':{name:'Morrisons',category:'Groceries',isSubscription:false},
+'aldi':{name:'Aldi',category:'Groceries',isSubscription:false},
+'lidl':{name:'Lidl',category:'Groceries',isSubscription:false},
+'waitrose':{name:'Waitrose',category:'Groceries',isSubscription:false},
+'ocado':{name:'Ocado',category:'Groceries',isSubscription:false},
+
+// EATING OUT
+'starbucks':{name:'Starbucks',category:'Eating Out',isSubscription:false},
+'costa':{name:'Costa',category:'Eating Out',isSubscription:false},
+'pret':{name:'Pret',category:'Eating Out',isSubscription:false},
+'greggs':{name:'Greggs',category:'Eating Out',isSubscription:false},
+'mcdonalds':{name:'McDonalds',category:'Eating Out',isSubscription:false},
+'nandos':{name:'Nandos',category:'Eating Out',isSubscription:false},
+'wagamama':{name:'Wagamama',category:'Eating Out',isSubscription:false},
+
+// SHOPPING
+'amazon':{name:'Amazon',category:'Shopping',isSubscription:false},
+'amzn':{name:'Amazon',category:'Shopping',isSubscription:false},
+'asos':{name:'ASOS',category:'Shopping',isSubscription:false},
+'zara':{name:'Zara',category:'Shopping',isSubscription:false},
+'ikea':{name:'IKEA',category:'Shopping',isSubscription:false},
+
+// BILLS
+'british gas':{name:'British Gas',category:'Bills',isSubscription:false},
+'octopus':{name:'Octopus Energy',category:'Bills',isSubscription:false},
+'council tax':{name:'Council Tax',category:'Bills',isSubscription:false},
+'rent':{name:'Rent',category:'Bills',isSubscription:false},
+'mortgage':{name:'Mortgage',category:'Bills',isSubscription:false},
+
+// INCOME
+'salary':{name:'Salary',category:'Income',isSubscription:false},
+'wages':{name:'Wages',category:'Income',isSubscription:false},
+'bacs':{name:'BACS',category:'Income',isSubscription:false},
+'refund':{name:'Refund',category:'Income',isSubscription:false}
 };
 
-// Taxonomy
-const TAXONOMY = {
-    'Essential Living': {
-        'Groceries': {patterns: ['tesco','sainsbury','asda','morrisons','aldi','lidl','waitrose','m&s food','co-op','coop','ocado']},
-        'Transport': {patterns: ['tfl','oyster','trainline','uber','bolt','taxi','shell','bp','esso','parking']},
-        'Utilities': {patterns: ['british gas','edf','eon','octopus','thames water','virgin media','bt','sky','ee','vodafone','three','o2']}
-    },
-    'Lifestyle': {
-        'Eating Out': {patterns: ['restaurant','wagamama','nandos','pizza express','mcdonalds','kfc','burger king','greggs','starbucks','costa','pret']},
-        'Food Delivery': {patterns: ['deliveroo','uber eats','just eat','justeat','hello fresh','gousto']},
-        'Shopping': {patterns: ['amazon','amzn','asos','zara','h&m','primark','john lewis','argos','ikea','boots','ebay']},
-        'Entertainment': {patterns: ['odeon','vue','cineworld','ticketmaster','eventbrite']}
-    },
-    'Subscriptions': {
-        'Streaming': {patterns: ['netflix','spotify','disney+','disney plus','amazon prime','prime video','apple tv','now tv','audible','youtube']},
-        'Software': {patterns: ['microsoft 365','google one','dropbox','adobe','canva','openai','chatgpt','nordvpn']},
-        'Fitness': {patterns: ['pure gym','puregym','david lloyd','virgin active','the gym','headspace','calm','peloton','strava']}
-    },
-    'Financial': {
-        'Income': {patterns: ['salary','wages','payroll','bacs','employer','refund','cashback']},
-        'Debt': {patterns: ['barclaycard','amex','american express','klarna','clearpay','loan']},
-        'Transfers': {patterns: ['transfer','faster payment','standing order','direct debit']}
-    }
+
+// ARCHETYPES
+const ARCHETYPES={
+subscription_collector:{name:'The Subscription Collector',emoji:'📦',color:'#B272E8',vibe:"Your card gets more monthly exercise than you",description:"You have assembled quite the digital empire - streaming services, apps, memberships. Each one seemed essential at signup, but together they are quietly reshaping your bank balance.",moneyStory:"You value access over ownership. You are an early adopter who loves trying new services.",triggers:p=>p.metrics.subscriptionCount>=5||p.monthly.subscriptions>70},
+convenience_seeker:{name:'The Convenience Seeker',emoji:'🛵',color:'#E87272',vibe:"Time is money, so you spend money on time",description:"Deliveroo, Uber, meal kits - your phone is basically a personal assistant. You have optimised your life for convenience.",moneyStory:"You trade money for time without hesitation. The delivery fee is worth not having to cook after a 10-hour day.",triggers:p=>(p.monthly.foodDelivery+(p.monthly.transport||0))>120},
+lifestyle_investor:{name:'The Lifestyle Investor',emoji:'✨',color:'#E8C872',vibe:"You are not spending, you are curating a life",description:"Shopping and experiences are not expenses in your mind - they are investments in who you are becoming.",moneyStory:"You spend on identity. The clothes, the events, the meals out - they are all part of the story you are writing.",triggers:p=>((p.monthly.shopping||0)+(p.monthly.entertainment||0))>150},
+quiet_builder:{name:'The Quiet Builder',emoji:'🌱',color:'#72E8B0',vibe:"Your future self is already thanking you",description:"While others are chasing the next dopamine hit, you are quietly building wealth.",moneyStory:"You think in decades, not weekends. Compound interest excites you more than flash sales.",triggers:p=>p.metrics.savingsRate>20},
+edge_walker:{name:'The Edge Walker',emoji:'🎭',color:'#E87272',vibe:"Living life one payday at a time",description:"Your income and spending are in a constant dance, sometimes a little too close for comfort.",moneyStory:"You are not irresponsible - you are just living in an expensive world on a salary that has not caught up.",triggers:p=>p.metrics.savingsRate<5||p.monthly.surplus<100},
+debt_juggler:{name:'The Debt Juggler',emoji:'🎪',color:'#E8A872',vibe:"Keeping all the balls in the air",description:"Credit cards, BNPL, maybe a loan - you are managing multiple financial obligations.",moneyStory:"You are strategic about which debt to pay when. You know the due dates, the minimum payments.",triggers:p=>p.metrics.debtAccountCount>=3||(p.monthly.debtPayments>0&&p.monthly.debtPayments>p.monthly.income*0.15)},
+balanced_realist:{name:'The Balanced Realist',emoji:'⚖️',color:'#72B0E8',vibe:"Boring is your financial superpower",description:"No extreme patterns here - just steady, sensible money management.",moneyStory:"You do not obsess over money, but you do not ignore it either. Bills get paid, some savings happen.",triggers:p=>true}
 };
 
-// Merchants
-const MERCHANTS = new Map([
-    ['Tesco',['tesco']],['Sainsbury\'s',['sainsbury']],['ASDA',['asda']],['Aldi',['aldi']],['Lidl',['lidl']],
-    ['Netflix',['netflix']],['Spotify',['spotify']],['Amazon Prime',['amazon prime','prime video']],['Disney+',['disney+','disney plus']],
-    ['Uber',['uber']],['Bolt',['bolt']],['TfL',['tfl','oyster']],
-    ['Deliveroo',['deliveroo']],['Uber Eats',['uber eats']],['Just Eat',['just eat','justeat']],
-    ['Starbucks',['starbucks']],['Costa',['costa']],['Pret',['pret']],['McDonald\'s',['mcdonalds']],['Greggs',['greggs']],
-    ['Amazon',['amazon','amzn']],['ASOS',['asos']],['Zara',['zara']],['IKEA',['ikea']],
-    ['Pure Gym',['pure gym','puregym']],['Headspace',['headspace']],['Klarna',['klarna']]
-]);
-
-// Archetypes
-const ARCHETYPES = {
-    subscription_collector: {
-        name: 'The Subscription Collector', emoji: '📦', color: '#B272E8',
-        vibe: "Your card gets more monthly exercise than you",
-        description: "You've assembled quite the digital empire — streaming services, apps, memberships. Each one seemed essential at signup, but together they're quietly reshaping your bank balance.",
-        moneyStory: "You value access over ownership. You're an early adopter who loves trying new services. Your FOMO is real — you'd rather pay £7.99/mo 'just in case' than miss out.",
-        triggers: p => p.metrics.subscriptionCount >= 5 || p.monthly.subscriptions > 70
-    },
-    convenience_seeker: {
-        name: 'The Convenience Seeker', emoji: '🛵', color: '#E87272',
-        vibe: "Time is money, so you spend money on time",
-        description: "Deliveroo, Uber, meal kits — your phone is basically a personal assistant. You've optimised your life for convenience, and you're willing to pay the premium for it.",
-        moneyStory: "You trade money for time without hesitation. Your schedule is packed, and you've done the mental maths: the delivery fee is worth not having to cook after a 10-hour day.",
-        triggers: p => (p.monthly.foodDelivery + (p.monthly.transport || 0)) > 120
-    },
-    lifestyle_investor: {
-        name: 'The Lifestyle Investor', emoji: '✨', color: '#E8C872',
-        vibe: "You're not spending, you're curating a life",
-        description: "Shopping and experiences aren't expenses in your mind — they're investments in who you're becoming. You believe in treating yourself.",
-        moneyStory: "You spend on identity. The clothes, the events, the meals out — they're all part of the story you're writing. You work hard, and life should be enjoyed now.",
-        triggers: p => ((p.monthly.shopping || 0) + (p.monthly.entertainment || 0)) > 150
-    },
-    quiet_builder: {
-        name: 'The Quiet Builder', emoji: '🌱', color: '#72E8B0',
-        vibe: "Your future self is already thanking you",
-        description: "While others are chasing the next dopamine hit, you're quietly building wealth. You've found the balance between enjoying today and securing tomorrow.",
-        moneyStory: "You think in decades, not weekends. Compound interest excites you more than flash sales. You're not cheap — you're strategic.",
-        triggers: p => p.metrics.savingsRate > 20
-    },
-    edge_walker: {
-        name: 'The Edge Walker', emoji: '🎭', color: '#E87272',
-        vibe: "Living life one payday at a time",
-        description: "Your income and spending are in a constant dance, sometimes a little too close for comfort. It's not a crisis, but there's not much runway either.",
-        moneyStory: "You're not irresponsible — you're just living in an expensive world on a salary that hasn't caught up. Unexpected costs hit harder than they should.",
-        triggers: p => p.metrics.savingsRate < 5 || p.monthly.surplus < 100
-    },
-    balanced_realist: {
-        name: 'The Balanced Realist', emoji: '⚖️', color: '#72B0E8',
-        vibe: "Boring is your financial superpower",
-        description: "No extreme patterns here — just steady, sensible money management. You're not optimised, but you're not in trouble either.",
-        moneyStory: "You don't obsess over money, but you don't ignore it either. Bills get paid, some savings happen, life gets lived.",
-        triggers: p => true
-    }
-};
-
-// Strength & Blind Spot Rules
-const STRENGTH_RULES = [
-    {text: 'Embraces technology to simplify life', check: p => p.metrics.subscriptionCount >= 3},
-    {text: 'Consistent spending patterns', check: p => p.amounts && p.amounts.standardDeviation < (p.amounts.average || 50) * 0.8},
-    {text: 'Invests in self-improvement', check: p => p.recurring.some(r => ['headspace','calm','gym','fitness','skillshare','duolingo'].some(k => r.merchant.toLowerCase().includes(k)))},
-    {text: 'Values experiences over possessions', check: p => (p.monthly.entertainment || 0) > (p.monthly.shopping || 0)},
-    {text: 'Strong savings discipline', check: p => p.metrics.savingsRate > 15},
-    {text: 'Conscious grocery shopper', check: p => (p.monthly.groceries || 0) > (p.monthly.foodDelivery || 0) * 1.5},
-    {text: 'Keeps subscriptions in check', check: p => p.metrics.subscriptionCount < 4},
-    {text: 'Resists delivery temptation', check: p => (p.monthly.foodDelivery || 0) < UK_BENCHMARKS.foodDelivery}
+// TRAITS
+const SUB_TRAITS=[
+{id:'delivery',emoji:'🍕',text:'Delivery-dependent',check:p=>p.monthly.foodDelivery>80},
+{id:'credit',emoji:'💳',text:'Credit-active',check:p=>p.metrics.creditCardCount>=2},
+{id:'bnpl',emoji:'💸',text:'BNPL user',check:p=>p.metrics.bnplCount>=1},
+{id:'commuter',emoji:'🚂',text:'Commuter',check:p=>p.monthly.transport>150},
+{id:'streaming',emoji:'📺',text:'Streaming heavy',check:p=>p.metrics.streamingCount>=3},
+{id:'ai',emoji:'🤖',text:'AI adopter',check:p=>p.subscriptions&&p.subscriptions.some(s=>['ChatGPT','Claude','Midjourney'].includes(s.merchant))},
+{id:'coffee',emoji:'☕',text:'Coffee regular',check:p=>p.topMerchants&&p.topMerchants.some(m=>['Starbucks','Costa','Pret'].includes(m.merchant)&&m.count>8)}
 ];
 
-const BLINDSPOT_RULES = [
-    {text: 'Subscription creep risk', detail: 'Multiple services adding up silently', check: p => p.metrics.subscriptionCount >= 6},
-    {text: 'Delivery dependency', detail: 'Convenience premium eating into savings', check: p => (p.monthly.foodDelivery || 0) > 100},
-    {text: 'Weekend spending spikes', detail: 'Significantly more spent Sat-Sun', check: p => p.temporal && p.temporal.isWeekendWarrior},
-    {text: 'Overlapping streaming services', detail: 'Paying for similar subscriptions', check: p => p.recurring.filter(r => ['netflix','disney','prime','apple tv'].some(s => r.merchant.toLowerCase().includes(s))).length >= 3},
-    {text: 'Savings rate below target', detail: 'Under the recommended 20%', check: p => p.metrics.savingsRate < 10 && p.metrics.savingsRate >= 0},
-    {text: 'Limited financial buffer', detail: 'Low surplus for emergencies', check: p => p.monthly.surplus < 200}
+// RULES
+const STRENGTH_RULES=[
+{text:'Strong savings discipline',check:p=>p.metrics.savingsRate>15},
+{text:'Debt-free lifestyle',check:p=>p.metrics.debtAccountCount===0},
+{text:'Keeps subscriptions lean',check:p=>p.metrics.subscriptionCount<=4},
+{text:'Conscious grocery shopper',check:p=>(p.monthly.groceries||0)>(p.monthly.foodDelivery||0)*1.5},
+{text:'Resists delivery temptation',check:p=>(p.monthly.foodDelivery||0)<UK_BENCHMARKS.foodDelivery}
 ];
 
-// Enrichment Engine
-class EnrichmentEngine {
-    enrich(rawText) {
-        const transactions = this.parseCSV(rawText);
-        const enriched = transactions.map(tx => this.enrichTransaction(tx));
-        const recurring = this.detectRecurring(enriched);
-        const temporal = this.analyseTemporalPatterns(enriched);
-        const amounts = this.analyseAmounts(enriched);
-        const profile = this.buildProfile(enriched, recurring, temporal, amounts);
-        const archetype = this.determineArchetype(profile);
-        const strengths = this.detectStrengths(profile);
-        const blindSpots = this.detectBlindSpots(profile);
-        const peerComparison = this.calculatePeerComparison(profile);
-        const insights = this.generateInsights(profile);
-        const potentialSavings = this.calculatePotentialSavings(profile);
-        return {transactions: enriched, recurring, temporal, amounts, profile, archetype, strengths, blindSpots, peerComparison, insights, potentialSavings};
-    }
+const BLINDSPOT_RULES=[
+{text:'Subscription creep risk',detail:'Multiple services adding up silently',check:p=>p.metrics.subscriptionCount>=6},
+{text:'Delivery dependency',detail:'Convenience premium eating into savings',check:p=>(p.monthly.foodDelivery||0)>100},
+{text:'Multiple BNPL accounts',detail:'Buy-now-pay-later spreading thin',check:p=>p.metrics.bnplCount>=2},
+{text:'Credit card stacking',detail:'Managing multiple credit lines',check:p=>p.metrics.creditCardCount>=3},
+{text:'Savings rate below target',detail:'Under the recommended 20%',check:p=>p.metrics.savingsRate<10&&p.metrics.savingsRate>=0}
+];
 
-    parseCSV(rawText) {
-        const lines = rawText.trim().split('\n');
-        const transactions = [];
-        let headers = [], startIndex = 0;
-        
-        for (let i = 0; i < Math.min(10, lines.length); i++) {
-            const line = lines[i].toLowerCase();
-            if (['date','description','amount','transaction','debit','credit'].some(kw => line.includes(kw))) {
-                headers = this.parseCSVLine(lines[i]).map(h => h.toLowerCase().trim());
-                startIndex = i + 1;
-                break;
-            }
-        }
-        
-        const indices = {
-            date: this.findCol(headers, ['date','transaction date','posted date']),
-            desc: this.findCol(headers, ['description','transaction','details','narrative','reference','merchant','payee','name']),
-            amount: this.findCol(headers, ['amount','value','sum']),
-            debit: this.findCol(headers, ['debit','out','withdrawal','money out']),
-            credit: this.findCol(headers, ['credit','in','deposit','money in'])
-        };
-        
-        for (let i = startIndex; i < lines.length; i++) {
-            if (!lines[i].trim()) continue;
-            const cols = this.parseCSVLine(lines[i]);
-            if (cols.length < 2) continue;
-            const tx = this.extractTx(cols, indices);
-            if (tx.description && tx.description.length > 1) transactions.push(tx);
-        }
-        return transactions;
-    }
 
-    parseCSVLine(line) {
-        const cols = [];
-        let current = '', inQuotes = false;
-        for (const char of line) {
-            if (char === '"') inQuotes = !inQuotes;
-            else if (char === ',' && !inQuotes) { cols.push(current.trim()); current = ''; }
-            else current += char;
-        }
-        cols.push(current.trim());
-        return cols.map(c => c.replace(/^"|"$/g, ''));
-    }
-
-    findCol(headers, names) {
-        for (const name of names) {
-            const idx = headers.findIndex(h => h.includes(name));
-            if (idx >= 0) return idx;
-        }
-        return -1;
-    }
-
-    extractTx(cols, indices) {
-        let amount = 0;
-        if (indices.amount >= 0 && cols[indices.amount]) {
-            amount = this.parseAmount(cols[indices.amount]);
-        } else {
-            const debit = indices.debit >= 0 ? this.parseAmount(cols[indices.debit]) : 0;
-            const credit = indices.credit >= 0 ? this.parseAmount(cols[indices.credit]) : 0;
-            amount = credit - debit;
-            if (debit > 0 && credit === 0) amount = -debit;
-        }
-        return {
-            date: this.parseDate(cols[indices.date >= 0 ? indices.date : 0] || ''),
-            description: cols[indices.desc >= 0 ? indices.desc : 1] || '',
-            descriptionNormalised: this.normalise(cols[indices.desc >= 0 ? indices.desc : 1] || ''),
-            amount
-        };
-    }
-
-    parseAmount(str) { return str ? parseFloat(str.replace(/[^0-9.-]/g, '')) || 0 : 0; }
-
-    parseDate(str) {
-        if (!str) return null;
-        const m1 = str.match(/(\d{2})\/(\d{2})\/(\d{4})/);
-        if (m1) return new Date(m1[3], m1[2]-1, m1[1]);
-        const m2 = str.match(/(\d{4})-(\d{2})-(\d{2})/);
-        if (m2) return new Date(m2[1], m2[2]-1, m2[3]);
-        const d = new Date(str);
-        return isNaN(d) ? null : d;
-    }
-
-    normalise(desc) {
-        return desc.toLowerCase().replace(/[^\w\s]/g, ' ').replace(/\d{4,}/g, '').replace(/\s{2,}/g, ' ').trim();
-    }
-
-    enrichTransaction(tx) {
-        const n = tx.descriptionNormalised;
-        const merchant = this.identifyMerchant(n);
-        const category = this.categorise(n, tx.amount);
-        return {
-            ...tx,
-            merchant: merchant,
-            category: category.level1,
-            subcategory: category.level2,
-            isIncome: tx.amount > 0 && category.level1 === 'Financial' && category.level2 === 'Income',
-            isTransfer: category.level2 === 'Transfers',
-            isSubscription: category.level1 === 'Subscriptions',
-            isRecurring: false
-        };
-    }
-
-    identifyMerchant(n) {
-        for (const [canonical, variations] of MERCHANTS) {
-            for (const v of variations) {
-                if (n.includes(v.toLowerCase())) return canonical;
-            }
-        }
-        const words = n.split(' ').filter(w => w.length > 2);
-        return words.slice(0, 3).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-    }
-
-    categorise(n, amount) {
-        for (const [l1, l2Obj] of Object.entries(TAXONOMY)) {
-            for (const [l2, data] of Object.entries(l2Obj)) {
-                if (data.patterns.some(p => n.includes(p.toLowerCase()))) {
-                    return {level1: l1, level2: l2};
-                }
-            }
-        }
-        if (amount > 500) return {level1: 'Financial', level2: 'Income'};
-        return {level1: 'Lifestyle', level2: 'Shopping'};
-    }
-
-    detectRecurring(transactions) {
-        const byMerchant = {};
-        transactions.forEach(tx => {
-            if (!tx.merchant) return;
-            if (!byMerchant[tx.merchant]) byMerchant[tx.merchant] = [];
-            byMerchant[tx.merchant].push(tx);
-        });
-
-        const recurring = [];
-        for (const [merchant, txs] of Object.entries(byMerchant)) {
-            if (txs.length < 2) continue;
-            txs.sort((a, b) => (a.date || 0) - (b.date || 0));
-            
-            const intervals = [];
-            for (let i = 1; i < txs.length; i++) {
-                if (txs[i].date && txs[i-1].date) {
-                    const days = Math.round((txs[i].date - txs[i-1].date) / (1000 * 60 * 60 * 24));
-                    if (days > 0) intervals.push(days);
-                }
-            }
-            if (intervals.length === 0) continue;
-            
-            const avgInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
-            const variance = intervals.reduce((sum, i) => sum + Math.pow(i - avgInterval, 2), 0) / intervals.length;
-            const stdDev = Math.sqrt(variance);
-            
-            if (stdDev < avgInterval * 0.3 && avgInterval > 5) {
-                const frequency = avgInterval < 10 ? 'weekly' : avgInterval < 45 ? 'monthly' : 'annual';
-                const amounts = txs.map(t => Math.abs(t.amount));
-                const avgAmount = amounts.reduce((a, b) => a + b, 0) / amounts.length;
-                
-                recurring.push({
-                    merchant, frequency,
-                    averageAmount: Math.round(avgAmount * 100) / 100,
-                    occurrences: txs.length,
-                    category: txs[0].category,
-                    subcategory: txs[0].subcategory
-                });
-                txs.forEach(tx => tx.isRecurring = true);
-            }
-        }
-        return recurring.sort((a, b) => b.averageAmount - a.averageAmount);
-    }
-
-    analyseTemporalPatterns(transactions) {
-        const withDates = transactions.filter(tx => tx.date && tx.amount < 0);
-        if (withDates.length < 10) return null;
-        
-        const dayOfWeekSpending = [0,0,0,0,0,0,0];
-        const dayOfWeekCounts = [0,0,0,0,0,0,0];
-        
-        withDates.forEach(tx => {
-            const day = tx.date.getDay();
-            dayOfWeekSpending[day] += Math.abs(tx.amount);
-            dayOfWeekCounts[day]++;
-        });
-        
-        const avgByDay = dayOfWeekSpending.map((total, i) => dayOfWeekCounts[i] > 0 ? total / dayOfWeekCounts[i] : 0);
-        const weekdayAvg = (avgByDay[1] + avgByDay[2] + avgByDay[3] + avgByDay[4] + avgByDay[5]) / 5;
-        const weekendAvg = (avgByDay[0] + avgByDay[6]) / 2;
-        const weekendRatio = weekdayAvg > 0 ? weekendAvg / weekdayAvg : 1;
-        
-        return {
-            weekendRatio: Math.round(weekendRatio * 100) / 100,
-            isWeekendWarrior: weekendRatio > 1.4
-        };
-    }
-
-    analyseAmounts(transactions) {
-        const spending = transactions.filter(tx => tx.amount < 0);
-        if (spending.length < 5) return null;
-        
-        const amounts = spending.map(tx => Math.abs(tx.amount));
-        const mean = amounts.reduce((a, b) => a + b, 0) / amounts.length;
-        const variance = amounts.reduce((sum, a) => sum + Math.pow(a - mean, 2), 0) / amounts.length;
-        const stdDev = Math.sqrt(variance);
-        
-        return {
-            average: Math.round(mean * 100) / 100,
-            standardDeviation: Math.round(stdDev * 100) / 100
-        };
-    }
-
-    buildProfile(transactions, recurring, temporal, amounts) {
-        const income = transactions.filter(tx => tx.isIncome);
-        const spending = transactions.filter(tx => tx.amount < 0 && !tx.isTransfer);
-        
-        const byCategory = {};
-        spending.forEach(tx => {
-            const key = tx.subcategory || tx.category || 'Other';
-            if (!byCategory[key]) byCategory[key] = {total: 0, count: 0};
-            byCategory[key].total += Math.abs(tx.amount);
-            byCategory[key].count++;
-        });
-        
-        const totalIncome = income.reduce((sum, tx) => sum + tx.amount, 0);
-        const totalSpending = spending.reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
-        const surplus = totalIncome - totalSpending;
-        
-        const days = 30; // Simplified
-        const mult = 1;
-        
-        const subscriptionTotal = recurring.filter(r => r.frequency === 'monthly').reduce((sum, r) => sum + r.averageAmount, 0);
-        
-        const categories = Object.entries(byCategory)
-            .map(([name, data]) => ({name, total: Math.round(data.total), count: data.count, monthlyEstimate: Math.round(data.total * mult)}))
-            .sort((a, b) => b.total - a.total);
-        
-        return {
-            transactionCount: transactions.length,
-            monthly: {
-                income: Math.round(totalIncome * mult),
-                spending: Math.round(totalSpending * mult),
-                surplus: Math.round(surplus * mult),
-                subscriptions: Math.round(subscriptionTotal),
-                foodDelivery: Math.round((byCategory['Food Delivery']?.total || 0) * mult),
-                shopping: Math.round((byCategory['Shopping']?.total || 0) * mult),
-                entertainment: Math.round((byCategory['Entertainment']?.total || 0) * mult),
-                groceries: Math.round((byCategory['Groceries']?.total || 0) * mult),
-                transport: Math.round((byCategory['Transport']?.total || 0) * mult)
-            },
-            metrics: {
-                savingsRate: totalIncome > 0 ? Math.round((surplus / totalIncome) * 100) : 0,
-                subscriptionCount: recurring.filter(r => r.frequency === 'monthly').length
-            },
-            categories,
-            topMerchants: this.getTopMerchants(spending, 10),
-            recurring,
-            temporal,
-            amounts
-        };
-    }
-
-    getTopMerchants(transactions, limit) {
-        const byMerchant = {};
-        transactions.forEach(tx => {
-            if (!tx.merchant) return;
-            if (!byMerchant[tx.merchant]) byMerchant[tx.merchant] = {total: 0, count: 0};
-            byMerchant[tx.merchant].total += Math.abs(tx.amount);
-            byMerchant[tx.merchant].count++;
-        });
-        return Object.entries(byMerchant)
-            .map(([merchant, data]) => ({merchant, total: Math.round(data.total), count: data.count}))
-            .sort((a, b) => b.total - a.total)
-            .slice(0, limit);
-    }
-
-    determineArchetype(profile) {
-        for (const [key, archetype] of Object.entries(ARCHETYPES)) {
-            if (key === 'balanced_realist') continue;
-            try { if (archetype.triggers(profile)) return {key, ...archetype}; } catch(e) {}
-        }
-        return {key: 'balanced_realist', ...ARCHETYPES.balanced_realist};
-    }
-
-    detectStrengths(profile) {
-        return STRENGTH_RULES.filter(rule => { try { return rule.check(profile); } catch { return false; }}).slice(0, 3).map(r => r.text);
-    }
-
-    detectBlindSpots(profile) {
-        return BLINDSPOT_RULES.filter(rule => { try { return rule.check(profile); } catch { return false; }}).slice(0, 3).map(r => ({text: r.text, detail: r.detail}));
-    }
-
-    calculatePeerComparison(profile) {
-        const m = profile.monthly;
-        const metrics = profile.metrics;
-        const comparisons = [];
-        
-        if (metrics.subscriptionCount > 0) {
-            const diff = Math.round(((metrics.subscriptionCount - UK_BENCHMARKS.subscriptions.count) / UK_BENCHMARKS.subscriptions.count) * 100);
-            comparisons.push({label: 'Subscriptions', value: metrics.subscriptionCount, unit: '', benchmark: UK_BENCHMARKS.subscriptions.count, diff, isHigher: diff > 0});
-        }
-        if (m.foodDelivery > 0) {
-            const diff = Math.round(((m.foodDelivery - UK_BENCHMARKS.foodDelivery) / UK_BENCHMARKS.foodDelivery) * 100);
-            comparisons.push({label: 'Food Delivery', value: m.foodDelivery, unit: '£/mo', benchmark: UK_BENCHMARKS.foodDelivery, diff, isHigher: diff > 0});
-        }
-        comparisons.push({label: 'Savings Rate', value: metrics.savingsRate, unit: '%', benchmark: UK_BENCHMARKS.savingsRate, diff: metrics.savingsRate - UK_BENCHMARKS.savingsRate, isHigher: metrics.savingsRate > UK_BENCHMARKS.savingsRate, higherIsGood: true});
-        
-        return comparisons.slice(0, 4);
-    }
-
-    generateInsights(profile) {
-        const insights = [];
-        const m = profile.monthly;
-        
-        if (profile.recurring.length > 0) {
-            const monthlySubscriptions = profile.recurring.filter(r => r.frequency === 'monthly');
-            insights.push({
-                type: 'subscriptions',
-                text: 'You have ' + monthlySubscriptions.length + ' active subscriptions totalling £' + m.subscriptions + '/month. We detected ' + monthlySubscriptions.slice(0, 4).map(s => s.merchant).join(', ') + (monthlySubscriptions.length > 4 ? ' and ' + (monthlySubscriptions.length - 4) + ' more' : '') + '.'
-            });
-        }
-        if (m.foodDelivery > 50) {
-            insights.push({
-                type: 'delivery',
-                text: "You're spending £" + m.foodDelivery + "/month on food delivery. Cooking the same meals typically costs 40% less — that's ~£" + Math.round(m.foodDelivery * 0.4 * 12) + "/year you could redirect."
-            });
-        }
-        
-        const topCategory = profile.categories[0];
-        if (topCategory && topCategory.name !== 'Other') {
-            insights.push({
-                type: 'top_category',
-                text: topCategory.name + ' is your biggest spending category at £' + topCategory.monthlyEstimate + '/month across ' + topCategory.count + ' transactions.'
-            });
-        }
-        
-        return insights;
-    }
-
-    calculatePotentialSavings(profile) {
-        let total = 0;
-        const m = profile.monthly;
-        total += Math.round(m.subscriptions * 12 * 0.3);
-        total += Math.round(m.foodDelivery * 12 * 0.4);
-        return Math.max(total, 150);
-    }
+// ENRICHMENT ENGINE
+class EnrichmentEngine{
+enrich(rawTexts){
+const allTx=[];
+rawTexts.forEach(text=>{allTx.push(...this.parseCSV(text))});
+allTx.sort((a,b)=>(a.date||0)-(b.date||0));
+const enriched=allTx.map(tx=>this.enrichTransaction(tx));
+const recurring=this.detectRecurring(enriched);
+const profile=this.buildProfile(enriched,recurring);
+const archetype=this.determineArchetype(profile);
+const traits=SUB_TRAITS.filter(t=>{try{return t.check(profile)}catch{return false}}).slice(0,4);
+const strengths=STRENGTH_RULES.filter(r=>{try{return r.check(profile)}catch{return false}}).slice(0,3).map(r=>r.text);
+const blindSpots=BLINDSPOT_RULES.filter(r=>{try{return r.check(profile)}catch{return false}}).slice(0,3);
+const peerComparison=this.calcPeerComparison(profile);
+const insights=this.genInsights(profile);
+const potentialSavings=this.calcSavings(profile);
+return{profile,archetype,traits,strengths,blindSpots,peerComparison,insights,potentialSavings,subscriptions:profile.subscriptions};
 }
 
-// Components
-const Nav = () => (
-    <nav style={{position:'fixed',top:0,left:0,right:0,zIndex:100,padding:'1rem 1.5rem',background:'rgba(10,10,10,0.95)',backdropFilter:'blur(20px)',borderBottom:'1px solid var(--border)',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-        <a href="https://bocy.io" className="mono" style={{fontSize:'1.1rem',fontWeight:700,color:'#fff',textDecoration:'none'}}>BOCY</a>
-        <span className="mono" style={{fontSize:'0.6rem',color:'var(--accent)'}}>✦ MONEY PERSONALITY</span>
-    </nav>
-);
+parseCSV(raw){
+const lines=raw.trim().split('\n'),txs=[];
+let headers=[],start=0;
+for(let i=0;i<Math.min(10,lines.length);i++){
+const l=lines[i].toLowerCase();
+if(['date','description','amount','debit','credit'].some(k=>l.includes(k))){
+headers=lines[i].split(',').map(h=>h.toLowerCase().replace(/"/g,'').trim());
+start=i+1;break;
+}}
+const di=headers.findIndex(h=>h.includes('date'));
+const desc=headers.findIndex(h=>['description','transaction','details','narrative','merchant','name'].some(k=>h.includes(k)));
+const ai=headers.findIndex(h=>h.includes('amount'));
+const deb=headers.findIndex(h=>['debit','out','money out'].some(k=>h.includes(k)));
+const cred=headers.findIndex(h=>['credit','in','money in'].some(k=>h.includes(k)));
 
-const Landing = ({onStart}) => (
-    <div style={{minHeight:'100vh',display:'flex',flexDirection:'column',justifyContent:'center',alignItems:'center',padding:'6rem 1.5rem 3rem',position:'relative',zIndex:1,textAlign:'center'}}>
-        <div className="fade-in" style={{maxWidth:'420px'}}>
-            <pre className="mono" style={{fontSize:'0.45rem',lineHeight:1.15,color:'var(--accent)',marginBottom:'1.5rem'}}>{`
+for(let i=start;i<lines.length;i++){
+if(!lines[i].trim())continue;
+const cols=this.parseLine(lines[i]);
+if(cols.length<2)continue;
+let amt=0;
+if(ai>=0&&cols[ai])amt=parseFloat(cols[ai].replace(/[^0-9.-]/g,''))||0;
+else{
+const db=deb>=0?parseFloat((cols[deb]||'').replace(/[^0-9.-]/g,''))||0:0;
+const cr=cred>=0?parseFloat((cols[cred]||'').replace(/[^0-9.-]/g,''))||0:0;
+amt=cr-db;if(db>0&&cr===0)amt=-db;
+}
+const d=cols[di>=0?di:0]||'';
+const tx={date:this.parseDate(d),description:cols[desc>=0?desc:1]||'',descNorm:this.norm(cols[desc>=0?desc:1]||''),amount:amt};
+if(tx.description.length>1)txs.push(tx);
+}
+return txs;
+}
+
+parseLine(line){const cols=[];let cur='',inQ=false;for(const c of line){if(c==='"')inQ=!inQ;else if(c===','&&!inQ){cols.push(cur.trim());cur=''}else cur+=c}cols.push(cur.trim());return cols.map(c=>c.replace(/^"|"$/g,''))}
+parseDate(s){if(!s)return null;let m=s.match(/(\d{2})\/(\d{2})\/(\d{4})/);if(m)return new Date(m[3],m[2]-1,m[1]);m=s.match(/(\d{4})-(\d{2})-(\d{2})/);if(m)return new Date(m[1],m[2]-1,m[3]);const d=new Date(s);return isNaN(d)?null:d}
+norm(d){return d.toLowerCase().replace(/[^\w\s]/g,' ').replace(/\d{4,}/g,'').replace(/\s+/g,' ').trim()}
+
+enrichTransaction(tx){
+const n=tx.descNorm;
+let lookup=null;
+for(const[pattern,data]of Object.entries(MERCHANT_DB)){if(n.includes(pattern)){lookup=data;break}}
+if(!lookup){
+const words=n.split(' ').filter(w=>w.length>2);
+lookup={name:words.slice(0,2).map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(' ')||'Unknown',category:'Other',isSubscription:false};
+}
+return{...tx,merchant:lookup.name,category:lookup.category,subcategory:lookup.subcategory||'',isSubscription:lookup.isSubscription,isIncome:lookup.category==='Income'||tx.amount>500,isTransfer:lookup.category==='Transfers',isDebt:lookup.category==='Debt Payments'};
+}
+
+detectRecurring(txs){
+const byM={};
+txs.forEach(tx=>{if(!tx.merchant||tx.category==='Income'||tx.category==='Transfers')return;if(!byM[tx.merchant])byM[tx.merchant]=[];byM[tx.merchant].push(tx)});
+const recurring=[];
+for(const[merchant,list]of Object.entries(byM)){
+if(list.length<2)continue;
+list.sort((a,b)=>(a.date||0)-(b.date||0));
+const intervals=[];
+for(let i=1;i<list.length;i++){if(list[i].date&&list[i-1].date){const days=Math.round((list[i].date-list[i-1].date)/(1000*60*60*24));if(days>0)intervals.push(days)}}
+if(!intervals.length)continue;
+const avg=intervals.reduce((a,b)=>a+b,0)/intervals.length;
+const variance=intervals.reduce((s,i)=>s+Math.pow(i-avg,2),0)/intervals.length;
+if(Math.sqrt(variance)<avg*0.4&&avg>5){
+const freq=avg<10?'weekly':avg<45?'monthly':'annual';
+const amounts=list.map(t=>Math.abs(t.amount));
+const avgAmt=amounts.reduce((a,b)=>a+b,0)/amounts.length;
+recurring.push({merchant,frequency:freq,averageAmount:Math.round(avgAmt*100)/100,category:list[0].category,subcategory:list[0].subcategory,isSubscription:list[0].isSubscription,isDebt:list[0].isDebt});
+list.forEach(tx=>tx.isRecurring=true);
+}}
+return recurring.sort((a,b)=>b.averageAmount-a.averageAmount);
+}
+
+buildProfile(txs,recurring){
+const income=txs.filter(tx=>tx.isIncome&&tx.amount>0);
+const spending=txs.filter(tx=>tx.amount<0&&!tx.isTransfer);
+const byCat={};
+spending.forEach(tx=>{const k=tx.category||'Other';if(!byCat[k])byCat[k]={total:0,count:0};byCat[k].total+=Math.abs(tx.amount);byCat[k].count++});
+const totalIncome=income.reduce((s,tx)=>s+tx.amount,0);
+const totalSpending=spending.reduce((s,tx)=>s+Math.abs(tx.amount),0);
+const surplus=totalIncome-totalSpending;
+
+const subs=recurring.filter(r=>r.isSubscription);
+const subTotal=subs.reduce((s,r)=>s+r.averageAmount,0);
+const debtPay=recurring.filter(r=>r.isDebt);
+const debtTotal=debtPay.reduce((s,r)=>s+r.averageAmount,0);
+const creditCards=debtPay.filter(r=>r.subcategory==='Credit Card');
+const bnpl=debtPay.filter(r=>r.subcategory==='BNPL');
+const streaming=subs.filter(r=>['Netflix','Spotify','Disney+','Prime Video','Apple TV+','NOW TV','YouTube Premium'].includes(r.merchant));
+
+const categories=Object.entries(byCat).map(([name,data])=>({name,total:Math.round(data.total),count:data.count})).sort((a,b)=>b.total-a.total);
+const byMerch={};
+spending.forEach(tx=>{if(!tx.merchant)return;if(!byMerch[tx.merchant])byMerch[tx.merchant]={total:0,count:0};byMerch[tx.merchant].total+=Math.abs(tx.amount);byMerch[tx.merchant].count++});
+const topMerchants=Object.entries(byMerch).map(([merchant,d])=>({merchant,total:Math.round(d.total),count:d.count})).sort((a,b)=>b.total-a.total).slice(0,10);
+
+return{
+transactionCount:txs.length,
+monthly:{income:Math.round(totalIncome),spending:Math.round(totalSpending),surplus:Math.round(surplus),subscriptions:Math.round(subTotal),debtPayments:Math.round(debtTotal),foodDelivery:Math.round(byCat['Food Delivery']?.total||0),shopping:Math.round(byCat['Shopping']?.total||0),entertainment:Math.round(byCat['Entertainment']?.total||0),groceries:Math.round(byCat['Groceries']?.total||0),transport:Math.round(byCat['Transport']?.total||0)},
+metrics:{savingsRate:totalIncome>0?Math.round((surplus/totalIncome)*100):0,subscriptionCount:subs.length,debtAccountCount:debtPay.length,creditCardCount:creditCards.length,bnplCount:bnpl.length,streamingCount:streaming.length},
+categories,topMerchants,recurring,subscriptions:subs,debtPayments:debtPay
+};
+}
+
+determineArchetype(p){
+const order=['debt_juggler','quiet_builder','edge_walker','subscription_collector','convenience_seeker','lifestyle_investor','balanced_realist'];
+for(const k of order){try{if(ARCHETYPES[k].triggers(p))return{key:k,...ARCHETYPES[k]}}catch{}}
+return{key:'balanced_realist',...ARCHETYPES.balanced_realist};
+}
+
+calcPeerComparison(p){
+const m=p.monthly,mt=p.metrics,comps=[];
+if(mt.subscriptionCount>0){const d=Math.round(((mt.subscriptionCount-UK_BENCHMARKS.subscriptions.count)/UK_BENCHMARKS.subscriptions.count)*100);comps.push({label:'Subscriptions',value:mt.subscriptionCount,unit:'',diff:d,isHigher:d>0})}
+if(m.foodDelivery>0){const d=Math.round(((m.foodDelivery-UK_BENCHMARKS.foodDelivery)/UK_BENCHMARKS.foodDelivery)*100);comps.push({label:'Food Delivery',value:m.foodDelivery,unit:'£/mo',diff:d,isHigher:d>0})}
+comps.push({label:'Savings Rate',value:mt.savingsRate,unit:'%',diff:mt.savingsRate-UK_BENCHMARKS.savingsRate,isHigher:mt.savingsRate>UK_BENCHMARKS.savingsRate,higherIsGood:true});
+return comps.slice(0,4);
+}
+
+genInsights(p){
+const ins=[],m=p.monthly;
+if(p.subscriptions.length>0){ins.push({type:'subscriptions',text:'You have '+p.subscriptions.length+' active subscriptions (£'+m.subscriptions+'/mo): '+p.subscriptions.slice(0,4).map(s=>s.merchant).join(', ')+(p.subscriptions.length>4?' and '+(p.subscriptions.length-4)+' more':'')+'.'});}
+if(p.debtPayments.length>0){ins.push({type:'debt',text:'You have '+p.debtPayments.length+' debt payment'+(p.debtPayments.length>1?'s':'')+' (£'+m.debtPayments+'/mo): '+p.debtPayments.slice(0,3).map(d=>d.merchant).join(', ')+'.'+(m.income>0?' That is '+Math.round((m.debtPayments/m.income)*100)+'% of your income.':'')});}
+if(m.foodDelivery>50){ins.push({type:'delivery',text:'You are spending £'+m.foodDelivery+'/month on food delivery. Cooking typically costs 40% less - that is ~£'+Math.round(m.foodDelivery*0.4*12)+'/year you could redirect.'});}
+return ins;
+}
+
+calcSavings(p){
+let t=0;const m=p.monthly;
+t+=Math.round(m.subscriptions*12*0.3);
+t+=Math.round(m.foodDelivery*12*0.4);
+t+=Math.round(m.debtPayments*12*0.15);
+return Math.max(t,100);
+}
+}
+
+
+// BACKGROUND
+const initBg=()=>{const c=document.getElementById('ascii-bg'),ctx=c.getContext('2d');const chars=['·','•','○','●','+','✦'];const particles=[];const resize=()=>{c.width=innerWidth;c.height=innerHeight};for(let i=0;i<70;i++)particles.push({x:Math.random()*innerWidth,y:Math.random()*innerHeight,char:chars[Math.floor(Math.random()*chars.length)],size:Math.random()*8+5,opacity:Math.random()*0.1+0.02,vx:(Math.random()-0.5)*0.06,vy:(Math.random()-0.5)*0.06,pulse:Math.random()*Math.PI*2,ps:Math.random()*0.01+0.003});const draw=()=>{ctx.clearRect(0,0,c.width,c.height);particles.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.pulse+=p.ps;if(p.x<0)p.x=c.width;if(p.x>c.width)p.x=0;if(p.y<0)p.y=c.height;if(p.y>c.height)p.y=0;ctx.fillStyle='rgba(232,200,114,'+(p.opacity*(0.6+Math.sin(p.pulse)*0.4))+')';ctx.font=p.size+'px "Space Mono"';ctx.textAlign='center';ctx.fillText(p.char,p.x,p.y)});requestAnimationFrame(draw)};resize();addEventListener('resize',resize);draw()};
+
+// NAV
+const Nav=()=>(<nav style={{position:'fixed',top:0,left:0,right:0,zIndex:100,padding:'1rem 1.5rem',background:'rgba(10,10,10,0.95)',backdropFilter:'blur(20px)',borderBottom:'1px solid var(--border)',display:'flex',justifyContent:'space-between',alignItems:'center'}}><a href={CONFIG.landingPage} className="mono" style={{fontSize:'1.1rem',fontWeight:700,color:'#fff',textDecoration:'none'}}>BOCY</a><span className="mono" style={{fontSize:'0.6rem',color:'var(--accent)'}}>✦ MONEY PERSONALITY</span></nav>);
+
+// LANDING
+const Landing=({onStart})=>(<div style={{minHeight:'100vh',display:'flex',flexDirection:'column',justifyContent:'center',alignItems:'center',padding:'6rem 1.5rem 3rem',position:'relative',zIndex:1,textAlign:'center'}}><div className="fade-in" style={{maxWidth:'420px'}}><pre className="mono" style={{fontSize:'0.45rem',lineHeight:1.15,color:'var(--accent)',marginBottom:'1.5rem'}}>{`
       ·  •  ·     ·  •  ·
     •  ✦  •  ·  •  ✦  •
   ·  •  ◉  ✦  ◉  •  ·
-    ✦  •  ◉  ◉  •  ✦
-      •  ✦  ◉  ✦  •`}</pre>
-            <h1 style={{fontSize:'clamp(1.3rem,5vw,1.7rem)',fontWeight:600,lineHeight:1.3,marginBottom:'1rem'}}>
-                Discover your<br/><span style={{color:'var(--accent)'}}>Money Personality</span>
-            </h1>
-            <p style={{color:'var(--dim)',fontSize:'0.9rem',lineHeight:1.7,marginBottom:'2.5rem'}}>
-                Upload your bank statement.<br/>Get personalised insights in seconds.
-            </p>
-            <button onClick={onStart} className="mono" style={{padding:'1rem 2.5rem',background:'var(--accent)',color:'var(--bg)',border:'none',borderRadius:'4px',fontSize:'0.8rem',fontWeight:700,cursor:'pointer'}}>
-                [ GET STARTED ]
-            </button>
-            <p className="mono" style={{marginTop:'2rem',fontSize:'0.6rem',color:'var(--muted)'}}>◉ DATA STAYS ON YOUR DEVICE ◉</p>
-        </div>
-    </div>
-);
+    ✦  •  ◉  ◉  •  ✦`}</pre><h1 style={{fontSize:'clamp(1.3rem,5vw,1.7rem)',fontWeight:600,lineHeight:1.3,marginBottom:'1rem'}}>Discover your<br/><span style={{color:'var(--accent)'}}>Money Personality</span></h1><p style={{color:'var(--dim)',fontSize:'0.9rem',lineHeight:1.7,marginBottom:'2rem'}}>Upload your bank statement.<br/>Get personalised insights in seconds.</p><div style={{display:'flex',flexWrap:'wrap',justifyContent:'center',gap:'0.5rem',marginBottom:'2rem'}}><span className="trust-badge">🔒 Bank-grade encryption</span><span className="trust-badge">🚫 Nothing stored</span><span className="trust-badge">📱 Processed locally</span></div><button onClick={onStart} className="mono" style={{padding:'1rem 2.5rem',background:'var(--accent)',color:'var(--bg)',border:'none',borderRadius:'4px',fontSize:'0.8rem',fontWeight:700,cursor:'pointer'}}>[ GET STARTED ]</button><div style={{marginTop:'2rem',padding:'1rem',background:'rgba(114,232,176,0.05)',border:'1px solid rgba(114,232,176,0.1)',borderRadius:'8px'}}><p style={{color:'var(--mint)',fontSize:'0.75rem',fontWeight:600,marginBottom:'0.5rem'}}>🛡️ Your data is safe</p><p style={{color:'var(--dim)',fontSize:'0.7rem',lineHeight:1.6}}>Your bank data never leaves your device. All analysis happens in your browser — we do not collect, store, or transmit any of your financial information.</p></div></div></div>);
 
-const Upload = ({onDone, onBack}) => {
-    const [status, setStatus] = useState('idle');
-    const [err, setErr] = useState('');
-    const ref = useRef();
-    
-    const handle = async (file) => {
-        if (!file) return;
-        if (!file.name.toLowerCase().endsWith('.csv')) { setErr('Please upload a CSV file'); return; }
-        setStatus('parsing'); setErr('');
-        try {
-            const text = await file.text();
-            const engine = new EnrichmentEngine();
-            const result = engine.enrich(text);
-            if (result.profile.transactionCount < 5) { setErr('Not enough transactions found.'); setStatus('idle'); return; }
-            onDone(result);
-        } catch (e) { console.error(e); setErr('Could not read file.'); setStatus('idle'); }
-    };
-    
-    if (status === 'parsing') return (
-        <div style={{minHeight:'100vh',display:'flex',flexDirection:'column',justifyContent:'center',alignItems:'center',padding:'2rem',position:'relative',zIndex:1}}>
-            <pre className="mono" style={{color:'var(--accent)',marginBottom:'1rem',animation:'pulse 1s infinite'}}>{`
-  ◉ ◉ ◉
+// UPLOAD
+const Upload=({onDone,onBack})=>{const[files,setFiles]=useState([]);const[status,setStatus]=useState('idle');const[err,setErr]=useState('');const ref=useRef();
+const addFiles=newF=>{const csvs=Array.from(newF).filter(f=>f.name.toLowerCase().endsWith('.csv'));if(!csvs.length){setErr('Please upload CSV files only');return}setFiles(p=>[...p,...csvs]);setErr('')};
+const removeFile=i=>setFiles(p=>p.filter((_,idx)=>idx!==i));
+const analyse=async()=>{if(!files.length){setErr('Please upload at least one file');return}setStatus('parsing');setErr('');try{const texts=await Promise.all(files.map(f=>f.text()));const engine=new EnrichmentEngine();const result=engine.enrich(texts);if(result.profile.transactionCount<5){setErr('Not enough transactions found.');setStatus('idle');return}onDone(result)}catch(e){console.error(e);setErr('Could not read files.');setStatus('idle')}};
+if(status==='parsing')return(<div style={{minHeight:'100vh',display:'flex',flexDirection:'column',justifyContent:'center',alignItems:'center',padding:'2rem',position:'relative',zIndex:1}}><pre className="mono" style={{color:'var(--accent)',marginBottom:'1rem',animation:'pulse 1s infinite'}}>{`  ◉ ◉ ◉
  ◉     ◉
-◉  ✦  ◉
- ◉     ◉
-  ◉ ◉ ◉`}</pre>
-            <p style={{fontSize:'0.9rem',color:'var(--dim)'}}>Analysing your transactions...</p>
-        </div>
-    );
-    
-    return (
-        <div style={{minHeight:'100vh',display:'flex',flexDirection:'column',justifyContent:'center',alignItems:'center',padding:'6rem 1.5rem 3rem',position:'relative',zIndex:1}}>
-            <div className="slide-up" style={{maxWidth:'380px',width:'100%',textAlign:'center'}}>
-                <h2 style={{fontSize:'1.1rem',fontWeight:600,marginBottom:'0.5rem'}}>Upload your statement</h2>
-                <p style={{color:'var(--dim)',marginBottom:'2rem',fontSize:'0.85rem'}}>Export CSV from your banking app</p>
-                <div onClick={() => ref.current?.click()} style={{padding:'2.5rem 2rem',border:'1px dashed var(--border)',borderRadius:'8px',cursor:'pointer',marginBottom:'1rem'}}>
-                    <input ref={ref} type="file" accept=".csv" onChange={e => handle(e.target.files[0])} style={{display:'none'}} />
-                    <pre className="mono" style={{color:'var(--dim)',fontSize:'0.55rem',marginBottom:'0.75rem'}}>{`
-   ┌─────────┐
+◉  ✦  ◉`}</pre><p style={{fontSize:'0.9rem',color:'var(--dim)'}}>Analysing your transactions...</p></div>);
+return(<div style={{minHeight:'100vh',display:'flex',flexDirection:'column',justifyContent:'center',alignItems:'center',padding:'6rem 1.5rem 3rem',position:'relative',zIndex:1}}><div className="slide-up" style={{maxWidth:'420px',width:'100%'}}><h2 style={{fontSize:'1.1rem',fontWeight:600,marginBottom:'0.5rem',textAlign:'center'}}>Upload your statements</h2><p style={{color:'var(--dim)',marginBottom:'1rem',fontSize:'0.85rem',textAlign:'center'}}>Export CSV from your banking app<br/><span style={{color:'var(--muted)',fontSize:'0.75rem'}}>You can upload multiple files</span></p><div style={{display:'flex',justifyContent:'center',gap:'0.5rem',marginBottom:'1.5rem'}}><span className="trust-badge" style={{fontSize:'0.6rem'}}>🔒 Encrypted</span><span className="trust-badge" style={{fontSize:'0.6rem'}}>📱 Local only</span></div><div onClick={()=>ref.current?.click()} onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();addFiles(e.dataTransfer.files)}} style={{padding:'2rem',border:'1px dashed var(--border)',borderRadius:'8px',cursor:'pointer',marginBottom:'1rem',textAlign:'center'}}><input ref={ref} type="file" accept=".csv" multiple onChange={e=>addFiles(e.target.files)} style={{display:'none'}}/><pre className="mono" style={{color:'var(--dim)',fontSize:'0.5rem',marginBottom:'0.75rem'}}>{`   ┌─────────┐
    │  .CSV   │
-   └─────────┘`}</pre>
-                    <p style={{color:'#fff',fontSize:'0.85rem',marginBottom:'0.2rem'}}>Drop your file here</p>
-                    <p style={{color:'var(--muted)',fontSize:'0.75rem'}}>or click to browse</p>
-                </div>
-                {err && <p style={{color:'var(--coral)',fontSize:'0.8rem',marginBottom:'1rem'}}>{err}</p>}
-                <button onClick={onBack} style={{background:'none',border:'none',color:'var(--muted)',fontSize:'0.8rem',cursor:'pointer'}}>← back</button>
-            </div>
-        </div>
-    );
-};
+   └─────────┘`}</pre><p style={{color:'#fff',fontSize:'0.85rem',marginBottom:'0.2rem'}}>Drop files here</p><p style={{color:'var(--muted)',fontSize:'0.75rem'}}>or click to browse</p></div>{files.length>0&&(<div style={{marginBottom:'1rem'}}><p className="mono" style={{fontSize:'0.65rem',color:'var(--dim)',marginBottom:'0.5rem'}}>{files.length} file{files.length>1?'s':''} selected:</p><div style={{display:'flex',flexWrap:'wrap'}}>{files.map((f,i)=>(<span key={i} className="file-chip">📄 {f.name.length>20?f.name.substring(0,17)+'...':f.name}<button onClick={()=>removeFile(i)}>×</button></span>))}</div></div>)}{err&&<p style={{color:'var(--coral)',fontSize:'0.8rem',marginBottom:'1rem',textAlign:'center'}}>{err}</p>}<button onClick={analyse} disabled={!files.length} className="mono" style={{width:'100%',padding:'0.9rem',background:files.length?'var(--accent)':'transparent',color:files.length?'var(--bg)':'var(--muted)',border:files.length?'none':'1px solid var(--border)',borderRadius:'6px',fontSize:'0.8rem',fontWeight:700,cursor:files.length?'pointer':'not-allowed',marginBottom:'1rem'}}>[ ANALYSE {files.length?files.length+' FILE'+(files.length>1?'S':''):''} ]</button><button onClick={onBack} style={{display:'block',width:'100%',background:'none',border:'none',color:'var(--muted)',fontSize:'0.8rem',cursor:'pointer'}}>← back</button></div></div>)};
 
-const Selfie = ({result, onDone}) => {
-    const [photo, setPhoto] = useState(null);
-    const ref = useRef();
-    
-    const handle = e => {
-        const f = e.target.files?.[0];
-        if (f) {
-            const r = new FileReader();
-            r.onload = e => setPhoto(e.target.result);
-            r.readAsDataURL(f);
-        }
-    };
-    
-    return (
-        <div style={{minHeight:'100vh',display:'flex',flexDirection:'column',justifyContent:'center',alignItems:'center',padding:'6rem 1.5rem 3rem',position:'relative',zIndex:1}}>
-            <div className="slide-up" style={{maxWidth:'340px',width:'100%',textAlign:'center'}}>
-                <h2 style={{fontSize:'1.1rem',fontWeight:600,marginBottom:'0.5rem'}}>Add your photo</h2>
-                <p style={{color:'var(--dim)',marginBottom:'2rem',fontSize:'0.8rem'}}>Makes your card shareable ✦</p>
-                <input ref={ref} type="file" accept="image/*" capture="user" onChange={handle} style={{display:'none'}} />
-                {photo ? (
-                    <div onClick={() => ref.current?.click()} style={{width:'120px',height:'120px',margin:'0 auto 2rem',borderRadius:'50%',overflow:'hidden',border:'2px solid ' + result.archetype.color,cursor:'pointer'}}>
-                        <img src={photo} style={{width:'100%',height:'100%',objectFit:'cover'}} alt="" />
-                    </div>
-                ) : (
-                    <button onClick={() => ref.current?.click()} style={{width:'120px',height:'120px',margin:'0 auto 2rem',borderRadius:'50%',background:'transparent',border:'1px dashed var(--border)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',cursor:'pointer'}}>
-                        <span style={{fontSize:'1.2rem',marginBottom:'0.2rem'}}>◉</span>
-                        <span style={{fontSize:'0.7rem',color:'var(--muted)'}}>tap to add</span>
-                    </button>
-                )}
-                <button onClick={() => onDone(photo)} disabled={!photo} className="mono" style={{width:'100%',padding:'0.9rem',background:photo?'var(--accent)':'transparent',color:photo?'var(--bg)':'var(--muted)',border:photo?'none':'1px solid var(--border)',borderRadius:'6px',fontSize:'0.8rem',fontWeight:700,cursor:photo?'pointer':'not-allowed'}}>
-                    [ GENERATE MY RESULTS ]
-                </button>
-            </div>
-        </div>
-    );
-};
 
-// Card Components
-const StandardCard = React.forwardRef(({photo, result}, ref) => {
-    const [ascii, setAscii] = useState('');
-    const {archetype, profile, peerComparison, potentialSavings} = result;
-    
-    useEffect(() => {
-        if (!photo) return;
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        img.onload = () => {
-            const c = document.createElement('canvas'), ctx = c.getContext('2d');
-            const w = 24, h = 24; c.width = w; c.height = h;
-            ctx.drawImage(img, 0, 0, w, h);
-            const d = ctx.getImageData(0, 0, w, h);
-            const chars = ' .·:+*•●';
-            let s = '';
-            for (let y = 0; y < h; y++) {
-                for (let x = 0; x < w; x++) {
-                    const i = (y * w + x) * 4;
-                    const b = (d.data[i] + d.data[i+1] + d.data[i+2]) / 3;
-                    s += chars[Math.floor((b / 255) * (chars.length - 1))];
-                }
-                s += '\n';
-            }
-            setAscii(s);
-        };
-        img.src = photo;
-    }, [photo]);
-    
-    const topCategory = profile.categories[0]?.name || 'Lifestyle';
-    const subComp = peerComparison.find(p => p.label === 'Subscriptions');
-    const subDiff = subComp ? Math.abs(subComp.diff) : 0;
-    
-    return (
-        <div ref={ref} style={{width:'300px',background:'#050505',borderRadius:'10px',padding:'20px',position:'relative',overflow:'hidden',border:'1px solid ' + archetype.color + '20'}}>
-            <div style={{position:'absolute',inset:0,background:'radial-gradient(circle at 50% 20%,' + archetype.color + '08 0%,transparent 50%)',pointerEvents:'none'}} />
-            <div style={{position:'relative',zIndex:1}}>
-                <pre className="mono" style={{fontSize:'4px',lineHeight:'4px',letterSpacing:'0.8px',color:archetype.color,textAlign:'center',marginBottom:'12px'}}>{ascii}</pre>
-                <div style={{textAlign:'center',marginBottom:'14px'}}>
-                    <span style={{fontSize:'1.6rem'}}>{archetype.emoji}</span>
-                    <h2 className="mono" style={{fontSize:'0.8rem',fontWeight:700,color:'#fff',margin:'4px 0'}}>{archetype.name}</h2>
-                    <p style={{fontSize:'0.6rem',color:archetype.color,fontStyle:'italic'}}>"{archetype.vibe}"</p>
-                </div>
-                <div style={{background:'rgba(255,255,255,0.02)',border:'1px solid rgba(255,255,255,0.04)',borderRadius:'6px',padding:'12px',marginBottom:'12px'}}>
-                    <div className="mono" style={{fontSize:'0.55rem',color:'var(--dim)',marginBottom:'6px'}}>{profile.metrics.subscriptionCount} active subscriptions</div>
-                    {subComp && subComp.diff > 10 && <div style={{marginBottom:'6px'}}><span style={{fontSize:'0.6rem',color:'var(--coral)'}}>🔥 {subDiff}% more than average</span></div>}
-                    <div className="mono" style={{fontSize:'0.55rem',color:'var(--dim)',marginBottom:'8px'}}>Top spend: {topCategory}</div>
-                    <div style={{textAlign:'center',paddingTop:'6px',borderTop:'1px solid rgba(255,255,255,0.04)'}}>
-                        <p className="mono" style={{fontSize:'0.5rem',color:'#444',marginBottom:'2px'}}>POTENTIAL SAVINGS</p>
-                        <p className="mono" style={{fontSize:'1.4rem',fontWeight:700,color:archetype.color}}>£{potentialSavings.toLocaleString()}</p>
-                        <p className="mono" style={{fontSize:'0.45rem',color:'#333'}}>per year</p>
-                    </div>
-                </div>
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',borderTop:'1px solid rgba(255,255,255,0.04)',paddingTop:'10px'}}>
-                    <span className="mono" style={{fontSize:'0.75rem',fontWeight:700,color:'#fff'}}>BOCY</span>
-                    <span className="mono" style={{fontSize:'0.4rem',color:'#333'}}>bocy.io/personality</span>
-                </div>
-            </div>
-        </div>
-    );
-});
+// CARD
+const ResultCard=React.forwardRef(({result},ref)=>{const{archetype,profile,traits,potentialSavings}=result;const ascii=ARCHETYPE_ASCII[archetype.key]||ARCHETYPE_ASCII.balanced_realist;const topCat=profile.categories[0]?.name||'Lifestyle';return(<div ref={ref} style={{width:'320px',background:'#050505',borderRadius:'12px',padding:'24px',position:'relative',overflow:'hidden',border:'1px solid '+archetype.color+'30'}}><div style={{position:'absolute',inset:0,background:'radial-gradient(circle at 50% 20%,'+archetype.color+'10 0%,transparent 50%)',pointerEvents:'none'}}/><div style={{position:'relative',zIndex:1}}><pre className="mono" style={{fontSize:'10px',lineHeight:'12px',color:archetype.color,textAlign:'center',marginBottom:'16px',whiteSpace:'pre'}}>{ascii.split('\\n').join('\n')}</pre><div style={{textAlign:'center',marginBottom:'16px'}}><span style={{fontSize:'2rem',display:'block',marginBottom:'4px'}}>{archetype.emoji}</span><h2 className="mono" style={{fontSize:'0.85rem',fontWeight:700,color:'#fff',marginBottom:'4px'}}>{archetype.name}</h2><p style={{fontSize:'0.65rem',color:archetype.color,fontStyle:'italic'}}>"{archetype.vibe}"</p></div>{traits.length>0&&(<div style={{display:'flex',flexWrap:'wrap',justifyContent:'center',gap:'4px',marginBottom:'16px'}}>{traits.slice(0,3).map((t,i)=>(<span key={i} style={{fontSize:'0.6rem',padding:'2px 8px',background:'rgba(255,255,255,0.05)',borderRadius:'10px',color:'var(--dim)'}}>{t.emoji} {t.text}</span>))}</div>)}<div style={{background:'rgba(255,255,255,0.02)',border:'1px solid rgba(255,255,255,0.04)',borderRadius:'8px',padding:'14px',marginBottom:'14px'}}><div style={{display:'flex',justifyContent:'space-between',marginBottom:'8px'}}><span className="mono" style={{fontSize:'0.6rem',color:'var(--dim)'}}>Subscriptions</span><span className="mono" style={{fontSize:'0.6rem',color:'#fff'}}>{profile.metrics.subscriptionCount} (£{profile.monthly.subscriptions}/mo)</span></div>{profile.metrics.debtAccountCount>0&&(<div style={{display:'flex',justifyContent:'space-between',marginBottom:'8px'}}><span className="mono" style={{fontSize:'0.6rem',color:'var(--dim)'}}>Debt Payments</span><span className="mono" style={{fontSize:'0.6rem',color:'var(--coral)'}}>{profile.metrics.debtAccountCount} (£{profile.monthly.debtPayments}/mo)</span></div>)}<div style={{display:'flex',justifyContent:'space-between'}}><span className="mono" style={{fontSize:'0.6rem',color:'var(--dim)'}}>Top Category</span><span className="mono" style={{fontSize:'0.6rem',color:'#fff'}}>{topCat}</span></div><div style={{textAlign:'center',paddingTop:'12px',marginTop:'12px',borderTop:'1px solid rgba(255,255,255,0.04)'}}><p className="mono" style={{fontSize:'0.5rem',color:'#444',marginBottom:'4px'}}>POTENTIAL SAVINGS</p><p className="mono" style={{fontSize:'1.6rem',fontWeight:700,color:archetype.color}}>£{potentialSavings.toLocaleString()}</p><p className="mono" style={{fontSize:'0.45rem',color:'#333'}}>per year</p></div></div><div style={{display:'flex',justifyContent:'space-between',alignItems:'center',borderTop:'1px solid rgba(255,255,255,0.04)',paddingTop:'12px'}}><span className="mono" style={{fontSize:'0.8rem',fontWeight:700,color:'#fff'}}>BOCY</span><span className="mono" style={{fontSize:'0.45rem',color:'#444'}}>bocy.io/personality</span></div></div></div>)});
 
-const StoryCard = React.forwardRef(({photo, result}, ref) => {
-    const [ascii, setAscii] = useState('');
-    const {archetype, profile, peerComparison, potentialSavings} = result;
-    
-    useEffect(() => {
-        if (!photo) return;
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        img.onload = () => {
-            const c = document.createElement('canvas'), ctx = c.getContext('2d');
-            const w = 28, h = 28; c.width = w; c.height = h;
-            ctx.drawImage(img, 0, 0, w, h);
-            const d = ctx.getImageData(0, 0, w, h);
-            const chars = ' .·:+*•●◉';
-            let s = '';
-            for (let y = 0; y < h; y++) {
-                for (let x = 0; x < w; x++) {
-                    const i = (y * w + x) * 4;
-                    const b = (d.data[i] + d.data[i+1] + d.data[i+2]) / 3;
-                    s += chars[Math.floor((b / 255) * (chars.length - 1))];
-                }
-                s += '\n';
-            }
-            setAscii(s);
-        };
-        img.src = photo;
-    }, [photo]);
-    
-    const topCategory = profile.categories[0]?.name || 'Lifestyle';
-    const subComp = peerComparison.find(p => p.label === 'Subscriptions');
-    const subDiff = subComp ? Math.abs(subComp.diff) : 0;
-    
-    return (
-        <div ref={ref} style={{width:'270px',height:'480px',background:'#050505',borderRadius:'12px',padding:'22px 18px',position:'relative',overflow:'hidden',border:'1px solid ' + archetype.color + '20',display:'flex',flexDirection:'column'}}>
-            <div style={{position:'absolute',inset:0,background:'radial-gradient(circle at 50% 15%,' + archetype.color + '10 0%,transparent 45%)',pointerEvents:'none'}} />
-            <div style={{position:'relative',zIndex:1,flex:1,display:'flex',flexDirection:'column'}}>
-                <pre className="mono" style={{fontSize:'4px',lineHeight:'4px',letterSpacing:'0.9px',color:archetype.color,textAlign:'center',marginBottom:'14px'}}>{ascii}</pre>
-                <div style={{textAlign:'center',marginBottom:'16px'}}>
-                    <span style={{fontSize:'2rem',display:'block',marginBottom:'6px'}}>{archetype.emoji}</span>
-                    <h2 className="mono" style={{fontSize:'0.9rem',fontWeight:700,color:'#fff',marginBottom:'4px'}}>{archetype.name}</h2>
-                    <p style={{fontSize:'0.6rem',color:archetype.color,fontStyle:'italic'}}>"{archetype.vibe}"</p>
-                </div>
-                <div style={{background:'rgba(255,255,255,0.02)',border:'1px solid rgba(255,255,255,0.05)',borderRadius:'6px',padding:'12px',marginBottom:'auto'}}>
-                    <div className="mono" style={{fontSize:'0.55rem',color:'var(--dim)',marginBottom:'4px'}}>{profile.metrics.subscriptionCount} subscriptions</div>
-                    {subComp && subComp.diff > 10 && <div style={{fontSize:'0.6rem',color:'var(--coral)',marginBottom:'4px'}}>🔥 {subDiff}% > average</div>}
-                    <div className="mono" style={{fontSize:'0.55rem',color:'var(--dim)',marginBottom:'8px'}}>Top: {topCategory}</div>
-                    <div style={{textAlign:'center',paddingTop:'8px',borderTop:'1px solid rgba(255,255,255,0.04)'}}>
-                        <p className="mono" style={{fontSize:'1.6rem',fontWeight:700,color:archetype.color}}>£{potentialSavings.toLocaleString()}</p>
-                        <p className="mono" style={{fontSize:'0.45rem',color:'#444'}}>potential/year</p>
-                    </div>
-                </div>
-                <div style={{textAlign:'center',padding:'12px 0',borderTop:'1px solid rgba(255,255,255,0.04)',marginTop:'12px'}}>
-                    <p className="mono" style={{fontSize:'0.6rem',color:'var(--accent)'}}>↑ SWIPE UP FOR</p>
-                    <p className="mono" style={{fontSize:'0.65rem',color:'#fff',fontWeight:700}}>YOUR BLIND SPOTS</p>
-                </div>
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                    <span className="mono" style={{fontSize:'0.8rem',fontWeight:700,color:'#fff'}}>BOCY</span>
-                    <span className="mono" style={{fontSize:'0.4rem',color:'#444'}}>bocy.io/personality</span>
-                </div>
-            </div>
-        </div>
-    );
-});
+// RESULT
+const Result=({result})=>{const cardRef=useRef();const[downloading,setDownloading]=useState(false);const[email,setEmail]=useState('');const[emailStatus,setEmailStatus]=useState('idle');const{archetype,profile,traits,strengths,blindSpots,peerComparison,insights,potentialSavings}=result;
+const downloadCard=async()=>{if(!cardRef.current)return;setDownloading(true);try{const canvas=await html2canvas(cardRef.current,{backgroundColor:'#050505',scale:3});const link=document.createElement('a');link.download='my-money-personality.png';link.href=canvas.toDataURL('image/png');link.click()}catch(e){console.error(e)}setDownloading(false)};
+const shareTwitter=()=>{const t='I am "'+archetype.name+'" '+archetype.emoji+'\n\n"'+archetype.vibe+'"\n\nApparently I could be saving £'+potentialSavings+'/year\n\nFind yours:';window.open('https://twitter.com/intent/tweet?text='+encodeURIComponent(t)+'&url='+encodeURIComponent('https://bocy.io/personality'),'_blank')};
+const submitEmail=async e=>{e.preventDefault();if(!email||emailStatus==='sending')return;setEmailStatus('sending');try{await fetch(CONFIG.googleScript,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,archetype:archetype.name,potentialSavings,savingsRate:profile.metrics.savingsRate,subscriptionCount:profile.metrics.subscriptionCount,debtAccountCount:profile.metrics.debtAccountCount,traits:traits.map(t=>t.text).join(', '),timestamp:new Date().toISOString()})});setEmailStatus('done')}catch{setEmailStatus('done')}};
 
-// Result Component
-const Result = ({photo, result}) => {
-    const cardRef = useRef();
-    const storyRef = useRef();
-    const [downloading, setDownloading] = useState(false);
-    const [email, setEmail] = useState('');
-    const [emailStatus, setEmailStatus] = useState('idle');
-    
-    const {archetype, profile, strengths, blindSpots, peerComparison, insights, potentialSavings} = result;
-    
-    const downloadCard = async (type) => {
-        const ref = type === 'story' ? storyRef : cardRef;
-        if (!ref.current) return;
-        setDownloading(true);
-        try {
-            const canvas = await html2canvas(ref.current, {backgroundColor: '#050505', scale: 3});
-            const link = document.createElement('a');
-            link.download = 'my-money-personality' + (type === 'story' ? '-story' : '') + '.png';
-            link.href = canvas.toDataURL('image/png');
-            link.click();
-        } catch (e) { console.error(e); }
-        setDownloading(false);
-    };
-    
-    const shareTwitter = () => {
-        const t = 'I\'m "' + archetype.name + '" ' + archetype.emoji + '\n\n"' + archetype.vibe + '"\n\nApparently I could be saving £' + potentialSavings + '/year 👀\n\nFind yours:';
-        window.open('https://twitter.com/intent/tweet?text=' + encodeURIComponent(t) + '&url=' + encodeURIComponent('https://bocy.io/personality'), '_blank');
-    };
-    
-    const submitEmail = async (e) => {
-        e.preventDefault();
-        if (!email || emailStatus === 'sending') return;
-        setEmailStatus('sending');
-        try {
-            await fetch(CONFIG.googleScript, {
-                method: 'POST', mode: 'no-cors',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({email, archetype: archetype.name, potentialSavings, savingsRate: profile.metrics.savingsRate, timestamp: new Date().toISOString()})
-            });
-            setEmailStatus('done');
-        } catch (err) { setEmailStatus('done'); }
-    };
-    
-    return (
-        <div style={{minHeight:'100vh',padding:'5rem 1rem 3rem',position:'relative',zIndex:1}}>
-            <div style={{maxWidth:'500px',margin:'0 auto'}}>
-                {/* Cards */}
-                <div className="fade-in" style={{display:'flex',justifyContent:'center',gap:'1rem',marginBottom:'1.5rem',flexWrap:'wrap'}}>
-                    <div>
-                        <StandardCard ref={cardRef} photo={photo} result={result} />
-                        <p className="mono" style={{textAlign:'center',fontSize:'0.55rem',color:'var(--muted)',marginTop:'0.5rem'}}>Standard</p>
-                    </div>
-                    <div>
-                        <StoryCard ref={storyRef} photo={photo} result={result} />
-                        <p className="mono" style={{textAlign:'center',fontSize:'0.55rem',color:'var(--muted)',marginTop:'0.5rem'}}>Instagram Story</p>
-                    </div>
-                </div>
-                
-                {/* Buttons */}
-                <div className="slide-up" style={{display:'flex',gap:'0.5rem',marginBottom:'1.5rem'}}>
-                    <button onClick={() => downloadCard('standard')} disabled={downloading} className="mono" style={{flex:1,padding:'0.7rem',background:'var(--accent)',color:'var(--bg)',border:'none',borderRadius:'6px',fontSize:'0.65rem',fontWeight:700,cursor:'pointer'}}>[ SAVE ]</button>
-                    <button onClick={() => downloadCard('story')} disabled={downloading} className="mono" style={{flex:1,padding:'0.7rem',background:'var(--lavender)',color:'var(--bg)',border:'none',borderRadius:'6px',fontSize:'0.65rem',fontWeight:700,cursor:'pointer'}}>[ STORY ]</button>
-                    <button onClick={shareTwitter} className="mono" style={{flex:1,padding:'0.7rem',background:'transparent',color:'#fff',border:'1px solid var(--border)',borderRadius:'6px',fontSize:'0.65rem',fontWeight:700,cursor:'pointer'}}>[ SHARE ]</button>
-                </div>
-                
-                {/* Money Personality */}
-                <div className="card-box slide-up">
-                    <div className="section-title">Your Money Personality</div>
-                    <div style={{display:'flex',alignItems:'center',gap:'0.75rem',marginBottom:'0.75rem'}}>
-                        <span style={{fontSize:'2rem'}}>{archetype.emoji}</span>
-                        <h2 style={{fontSize:'1.2rem',fontWeight:600,color:archetype.color}}>{archetype.name}</h2>
-                    </div>
-                    <p style={{color:'var(--text2)',fontSize:'0.9rem',lineHeight:1.7}}>{archetype.description}</p>
-                </div>
-                
-                {/* Money Story */}
-                <div className="card-box slide-up">
-                    <div className="section-title">What Your Money Says About You</div>
-                    <p style={{color:'var(--text2)',fontSize:'0.9rem',lineHeight:1.7}}>{archetype.moneyStory}</p>
-                </div>
-                
-                {/* Strengths */}
-                <div className="card-box slide-up">
-                    <div className="section-title">Your Top Strengths</div>
-                    <div style={{display:'flex',flexDirection:'column',gap:'0.6rem'}}>
-                        {strengths.length > 0 ? strengths.map((s, i) => (
-                            <div key={i} style={{display:'flex',alignItems:'center',gap:'0.6rem'}}>
-                                <span style={{color:'var(--mint)',fontSize:'0.9rem'}}>✦</span>
-                                <span style={{color:'var(--text2)',fontSize:'0.9rem'}}>{s}</span>
-                            </div>
-                        )) : <p style={{color:'var(--dim)',fontSize:'0.85rem'}}>Upload more transactions for detailed analysis</p>}
-                    </div>
-                </div>
-                
-                {/* Blind Spots */}
-                <div className="card-box slide-up">
-                    <div className="section-title">Your Blind Spots</div>
-                    <div style={{display:'flex',flexDirection:'column',gap:'0.75rem'}}>
-                        {blindSpots.length > 0 ? blindSpots.map((b, i) => (
-                            <div key={i}>
-                                <div style={{display:'flex',alignItems:'center',gap:'0.6rem',marginBottom:'0.2rem'}}>
-                                    <span style={{color:'var(--coral)',fontSize:'0.9rem'}}>⚠</span>
-                                    <span style={{color:'#fff',fontSize:'0.9rem',fontWeight:500}}>{b.text}</span>
-                                </div>
-                                <p style={{color:'var(--dim)',fontSize:'0.8rem',marginLeft:'1.5rem'}}>{b.detail}</p>
-                            </div>
-                        )) : <p style={{color:'var(--dim)',fontSize:'0.85rem'}}>No major blind spots detected — nice work!</p>}
-                    </div>
-                </div>
-                
-                {/* Peer Comparison */}
-                <div className="card-box slide-up">
-                    <div className="section-title">How You Compare (UK Average)</div>
-                    <div style={{display:'flex',flexDirection:'column',gap:'0.75rem'}}>
-                        {peerComparison.map((p, i) => (
-                            <div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                                <span style={{color:'var(--text2)',fontSize:'0.85rem'}}>{p.label}</span>
-                                <div style={{display:'flex',alignItems:'center',gap:'0.5rem'}}>
-                                    <span className="mono" style={{color:'#fff',fontSize:'0.9rem',fontWeight:600}}>{p.value}{p.unit === '£/mo' ? '' : p.unit}</span>
-                                    {p.unit === '£/mo' && <span style={{color:'var(--dim)',fontSize:'0.75rem'}}>£/mo</span>}
-                                    {p.diff !== 0 && (
-                                        <span className="mono" style={{fontSize:'0.7rem',color:p.higherIsGood ? (p.isHigher ? 'var(--mint)' : 'var(--coral)') : (p.isHigher ? 'var(--coral)' : 'var(--mint)'),padding:'0.15rem 0.4rem',background:p.higherIsGood ? (p.isHigher ? 'rgba(114,232,176,0.1)' : 'rgba(232,114,114,0.1)') : (p.isHigher ? 'rgba(232,114,114,0.1)' : 'rgba(114,232,176,0.1)'),borderRadius:'4px'}}>
-                                            {p.diff > 0 ? '+' : ''}{p.diff}%
-                                        </span>
-                                    )}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-                
-                {/* Personalised Insight */}
-                {insights.length > 0 && (
-                    <div className="card-box slide-up">
-                        <div className="section-title">Your Personalised Insight</div>
-                        <p style={{color:'var(--text2)',fontSize:'0.9rem',lineHeight:1.7,padding:'0.5rem',background:'rgba(232,200,114,0.05)',borderRadius:'6px',borderLeft:'3px solid var(--accent)'}}>{insights[0].text}</p>
-                    </div>
-                )}
-                
-                {/* Email Gate */}
-                {emailStatus !== 'done' ? (
-                    <div className="slide-up" style={{background:'linear-gradient(135deg,rgba(232,200,114,0.08) 0%,rgba(178,114,232,0.08) 100%)',border:'1px solid rgba(232,200,114,0.2)',borderRadius:'10px',padding:'1.5rem',marginTop:'1.5rem'}}>
-                        <div className="section-title" style={{color:'var(--accent)'}}>🔒 Unlock Your Action Plan</div>
-                        <p style={{color:'#fff',fontSize:'0.95rem',fontWeight:500,marginBottom:'0.75rem'}}>BOCY will automatically:</p>
-                        <div style={{display:'flex',flexDirection:'column',gap:'0.5rem',marginBottom:'1.25rem'}}>
-                            <div style={{display:'flex',alignItems:'center',gap:'0.5rem'}}><span style={{color:'var(--accent)'}}>→</span><span style={{color:'var(--text2)',fontSize:'0.85rem'}}>Identify which subscriptions to cut</span></div>
-                            <div style={{display:'flex',alignItems:'center',gap:'0.5rem'}}><span style={{color:'var(--accent)'}}>→</span><span style={{color:'var(--text2)',fontSize:'0.85rem'}}>Calculate your optimal debt payoff order</span></div>
-                            <div style={{display:'flex',alignItems:'center',gap:'0.5rem'}}><span style={{color:'var(--accent)'}}>→</span><span style={{color:'var(--text2)',fontSize:'0.85rem'}}>Set up savings rules that actually work</span></div>
-                            <div style={{display:'flex',alignItems:'center',gap:'0.5rem'}}><span style={{color:'var(--accent)'}}>→</span><span style={{color:'var(--text2)',fontSize:'0.85rem'}}>Execute the boring stuff for you</span></div>
-                        </div>
-                        <form onSubmit={submitEmail} style={{display:'flex',gap:'0.5rem'}}>
-                            <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="your@email.com" required style={{flex:1,padding:'0.75rem 1rem',background:'rgba(0,0,0,0.3)',border:'1px solid var(--border)',borderRadius:'6px',color:'#fff',fontSize:'0.85rem',outline:'none'}} />
-                            <button type="submit" disabled={emailStatus === 'sending'} className="mono" style={{padding:'0.75rem 1.25rem',background:'var(--accent)',color:'var(--bg)',border:'none',borderRadius:'6px',fontSize:'0.75rem',fontWeight:700,cursor:'pointer'}}>{emailStatus === 'sending' ? '...' : 'JOIN WAITLIST'}</button>
-                        </form>
-                        <p style={{color:'var(--dim)',fontSize:'0.75rem',marginTop:'1rem',textAlign:'center',fontStyle:'italic'}}>"We're building the financial decision + execution assistant.<br/>You think it, BOCY does it."</p>
-                    </div>
-                ) : (
-                    <div className="slide-up" style={{background:'rgba(114,232,176,0.08)',border:'1px solid rgba(114,232,176,0.2)',borderRadius:'10px',padding:'1.5rem',marginTop:'1.5rem',textAlign:'center'}}>
-                        <span style={{fontSize:'2rem',display:'block',marginBottom:'0.5rem'}}>✓</span>
-                        <p style={{color:'var(--mint)',fontSize:'1rem',fontWeight:600,marginBottom:'0.5rem'}}>You're on the list!</p>
-                        <p style={{color:'var(--dim)',fontSize:'0.85rem'}}>We'll notify you when BOCY launches.</p>
-                    </div>
-                )}
-            </div>
-        </div>
-    );
-};
+return(<div style={{minHeight:'100vh',padding:'5rem 1rem 3rem',position:'relative',zIndex:1}}><div style={{maxWidth:'500px',margin:'0 auto'}}>
+<div className="fade-in" style={{display:'flex',justifyContent:'center',marginBottom:'1.5rem'}}><ResultCard ref={cardRef} result={result}/></div>
+<div className="slide-up" style={{display:'flex',gap:'0.5rem',marginBottom:'1.5rem'}}><button onClick={downloadCard} disabled={downloading} className="mono" style={{flex:1,padding:'0.7rem',background:'var(--accent)',color:'var(--bg)',border:'none',borderRadius:'6px',fontSize:'0.65rem',fontWeight:700,cursor:'pointer'}}>{downloading?'...':'[ SAVE CARD ]'}</button><button onClick={shareTwitter} className="mono" style={{flex:1,padding:'0.7rem',background:'transparent',color:'#fff',border:'1px solid var(--border)',borderRadius:'6px',fontSize:'0.65rem',fontWeight:700,cursor:'pointer'}}>[ SHARE ]</button></div>
 
-// Main App
-const App = () => {
-    const [screen, setScreen] = useState('landing');
-    const [result, setResult] = useState(null);
-    const [photo, setPhoto] = useState(null);
-    
-    useEffect(() => { initBg(); }, []);
-    
-    const handleData = r => { setResult(r); setScreen('selfie'); };
-    const handlePhoto = p => { setPhoto(p); setScreen('result'); };
-    
-    return (
-        <>
-            <Nav />
-            {screen === 'landing' && <Landing onStart={() => setScreen('upload')} />}
-            {screen === 'upload' && <Upload onDone={handleData} onBack={() => setScreen('landing')} />}
-            {screen === 'selfie' && <Selfie result={result} onDone={handlePhoto} />}
-            {screen === 'result' && <Result photo={photo} result={result} />}
-        </>
-    );
-};
+<div className="card-box slide-up"><div className="section-title">Your Money Personality</div><div style={{display:'flex',alignItems:'center',gap:'0.75rem',marginBottom:'0.75rem'}}><span style={{fontSize:'2rem'}}>{archetype.emoji}</span><h2 style={{fontSize:'1.2rem',fontWeight:600,color:archetype.color}}>{archetype.name}</h2></div><p style={{color:'var(--text2)',fontSize:'0.9rem',lineHeight:1.7}}>{archetype.description}</p></div>
 
-ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+<div className="card-box slide-up"><div className="section-title">What Your Money Says About You</div><p style={{color:'var(--text2)',fontSize:'0.9rem',lineHeight:1.7}}>{archetype.moneyStory}</p></div>
+
+{traits.length>0&&(<div className="card-box slide-up"><div className="section-title">Your Traits</div><div style={{display:'flex',flexWrap:'wrap',gap:'0.4rem'}}>{traits.map((t,i)=>(<span key={i} className="trait-tag">{t.emoji} {t.text}</span>))}</div></div>)}
+
+<div className="card-box slide-up"><div className="section-title">Your Strengths</div><div style={{display:'flex',flexDirection:'column',gap:'0.6rem'}}>{strengths.length>0?strengths.map((s,i)=>(<div key={i} style={{display:'flex',alignItems:'center',gap:'0.6rem'}}><span style={{color:'var(--mint)',fontSize:'0.9rem'}}>✦</span><span style={{color:'var(--text2)',fontSize:'0.9rem'}}>{s}</span></div>)):<p style={{color:'var(--dim)',fontSize:'0.85rem'}}>Upload more transactions for detailed analysis</p>}</div></div>
+
+<div className="card-box slide-up"><div className="section-title">Your Blind Spots</div><div style={{display:'flex',flexDirection:'column',gap:'0.75rem'}}>{blindSpots.length>0?blindSpots.map((b,i)=>(<div key={i}><div style={{display:'flex',alignItems:'center',gap:'0.6rem',marginBottom:'0.2rem'}}><span style={{color:'var(--coral)',fontSize:'0.9rem'}}>⚠</span><span style={{color:'#fff',fontSize:'0.9rem',fontWeight:500}}>{b.text}</span></div><p style={{color:'var(--dim)',fontSize:'0.8rem',marginLeft:'1.5rem'}}>{b.detail}</p></div>)):<p style={{color:'var(--dim)',fontSize:'0.85rem'}}>No major blind spots detected</p>}</div></div>
+
+<div className="card-box slide-up"><div className="section-title">How You Compare (UK Average)</div><div style={{display:'flex',flexDirection:'column',gap:'0.75rem'}}>{peerComparison.map((p,i)=>(<div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><span style={{color:'var(--text2)',fontSize:'0.85rem'}}>{p.label}</span><div style={{display:'flex',alignItems:'center',gap:'0.5rem'}}><span className="mono" style={{color:'#fff',fontSize:'0.9rem',fontWeight:600}}>{p.value}{p.unit==='£/mo'?'':p.unit}</span>{p.unit==='£/mo'&&<span style={{color:'var(--dim)',fontSize:'0.75rem'}}>£/mo</span>}{p.diff!==0&&(<span className="mono" style={{fontSize:'0.7rem',color:p.higherIsGood?(p.isHigher?'var(--mint)':'var(--coral)'):(p.isHigher?'var(--coral)':'var(--mint)'),padding:'0.15rem 0.4rem',background:p.higherIsGood?(p.isHigher?'rgba(114,232,176,0.1)':'rgba(232,114,114,0.1)'):(p.isHigher?'rgba(232,114,114,0.1)':'rgba(114,232,176,0.1)'),borderRadius:'4px'}}>{p.diff>0?'+':''}{p.diff}%</span>)}</div></div>))}</div></div>
+
+{insights.length>0&&(<div className="card-box slide-up"><div className="section-title">Your Personalised Insights</div><div style={{display:'flex',flexDirection:'column',gap:'0.75rem'}}>{insights.map((ins,i)=>(<p key={i} style={{color:'var(--text2)',fontSize:'0.85rem',lineHeight:1.7,padding:'0.6rem',background:ins.type==='debt'?'rgba(232,114,114,0.05)':'rgba(232,200,114,0.05)',borderRadius:'6px',borderLeft:ins.type==='debt'?'3px solid var(--coral)':'3px solid var(--accent)'}}>{ins.text}</p>))}</div></div>)}
+
+{emailStatus!=='done'?(<div className="slide-up" style={{background:'linear-gradient(135deg,rgba(232,200,114,0.08) 0%,rgba(178,114,232,0.08) 100%)',border:'1px solid rgba(232,200,114,0.2)',borderRadius:'10px',padding:'1.5rem',marginTop:'1.5rem'}}><div className="section-title" style={{color:'var(--accent)'}}>🔒 Unlock Your Action Plan</div><p style={{color:'#fff',fontSize:'0.95rem',fontWeight:500,marginBottom:'0.75rem'}}>BOCY will automatically:</p><div style={{display:'flex',flexDirection:'column',gap:'0.5rem',marginBottom:'1.25rem'}}><div style={{display:'flex',alignItems:'center',gap:'0.5rem'}}><span style={{color:'var(--accent)'}}>→</span><span style={{color:'var(--text2)',fontSize:'0.85rem'}}>Identify which subscriptions to cut</span></div><div style={{display:'flex',alignItems:'center',gap:'0.5rem'}}><span style={{color:'var(--accent)'}}>→</span><span style={{color:'var(--text2)',fontSize:'0.85rem'}}>Calculate your optimal debt payoff order</span></div><div style={{display:'flex',alignItems:'center',gap:'0.5rem'}}><span style={{color:'var(--accent)'}}>→</span><span style={{color:'var(--text2)',fontSize:'0.85rem'}}>Set up savings rules that actually work</span></div></div><form onSubmit={submitEmail} style={{display:'flex',gap:'0.5rem'}}><input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="your@email.com" required style={{flex:1,padding:'0.75rem 1rem',background:'rgba(0,0,0,0.3)',border:'1px solid var(--border)',borderRadius:'6px',color:'#fff',fontSize:'0.85rem',outline:'none'}}/><button type="submit" disabled={emailStatus==='sending'} className="mono" style={{padding:'0.75rem 1.25rem',background:'var(--accent)',color:'var(--bg)',border:'none',borderRadius:'6px',fontSize:'0.75rem',fontWeight:700,cursor:'pointer'}}>{emailStatus==='sending'?'...':'JOIN'}</button></form></div>):(<div className="slide-up" style={{background:'rgba(114,232,176,0.08)',border:'1px solid rgba(114,232,176,0.2)',borderRadius:'10px',padding:'1.5rem',marginTop:'1.5rem',textAlign:'center'}}><span style={{fontSize:'2rem',display:'block',marginBottom:'0.5rem'}}>✓</span><p style={{color:'var(--mint)',fontSize:'1rem',fontWeight:600,marginBottom:'0.5rem'}}>You are on the list!</p><p style={{color:'var(--dim)',fontSize:'0.85rem',marginBottom:'1rem'}}>We will notify you when BOCY launches.</p><a href={CONFIG.landingPage} className="mono" style={{display:'inline-block',padding:'0.8rem 1.5rem',background:'var(--accent)',color:'var(--bg)',borderRadius:'6px',fontSize:'0.75rem',fontWeight:700,textDecoration:'none'}}>[ LEARN MORE ABOUT BOCY ]</a></div>)}
+
+<div style={{textAlign:'center',marginTop:'2rem',paddingTop:'1.5rem',borderTop:'1px solid var(--border)'}}><p style={{color:'var(--dim)',fontSize:'0.8rem',marginBottom:'0.75rem'}}>Want to see the full picture?</p><a href={CONFIG.landingPage} style={{color:'var(--accent)',fontSize:'0.85rem',textDecoration:'none'}}>Visit bocy.io →</a></div>
+</div></div>)};
+
+// APP
+const App=()=>{const[screen,setScreen]=useState('landing');const[result,setResult]=useState(null);useEffect(()=>{initBg()},[]);const handleData=r=>{setResult(r);setScreen('result')};return(<><Nav/>{screen==='landing'&&<Landing onStart={()=>setScreen('upload')}/>}{screen==='upload'&&<Upload onDone={handleData} onBack={()=>setScreen('landing')}/>}{screen==='result'&&<Result result={result}/>}</>)};
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
 </body>
 </html>
