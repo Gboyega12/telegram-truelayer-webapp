@@ -9,6 +9,7 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <style>
         :root{--bg:#0a0a0a;--surface:#111;--border:rgba(255,255,255,0.06);--text:#fff;--text2:#ccc;--dim:#888;--muted:#555;--accent:#E8C872;--coral:#E87272;--mint:#72E8B0;--lavender:#B272E8;--sky:#72B0E8}
         *{margin:0;padding:0;box-sizing:border-box}
@@ -36,7 +37,11 @@
 <script type="text/babel">
 const {useState,useEffect,useRef}=React;
 const CONFIG={googleScript:'https://script.google.com/macros/s/AKfycbxwOJ7DwZo4z3jiW25aH6nu5cC3qkIQs-GIizz0-xyeaoxe5Hdxg1TK3jxl_K1yJpIFRg/exec',landingPage:'https://www.bocy.io'};
+const CLAUDE_CONFIG={apiKey:(typeof localStorage!=='undefined'&&localStorage.getItem('bocy_claude_key'))||'',model:'claude-haiku-4-5-20251001',apiVersion:'2023-06-01'};
 const UK_BENCHMARKS={subscriptions:{count:5,monthly:52},foodDelivery:68,savingsRate:11};
+
+// PDF.js worker setup
+if(typeof pdfjsLib!=='undefined'){pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'}
 
 const ARCHETYPE_ASCII={
 subscription_collector:"   [=] [=] [=]\\n   [=] [=] [=]\\n   [=] [=] [=]",
@@ -189,7 +194,7 @@ const SUB_TRAITS=[
 {id:'bnpl',emoji:'💸',text:'BNPL user',check:p=>p.metrics.bnplCount>=1},
 {id:'commuter',emoji:'🚂',text:'Commuter',check:p=>p.monthly.transport>150},
 {id:'streaming',emoji:'📺',text:'Streaming heavy',check:p=>p.metrics.streamingCount>=3},
-{id:'ai',emoji:'🤖',text:'AI adopter',check:p=>p.subscriptions&&p.subscriptions.some(s=>['ChatGPT','Claude','Midjourney'].includes(s.merchant))},
+{id:'techsub',emoji:'💻',text:'Tech subscriber',check:p=>p.subscriptions&&p.subscriptions.some(s=>['ChatGPT','Claude','Midjourney','Cursor','Lovable'].includes(s.merchant))},
 {id:'coffee',emoji:'☕',text:'Coffee regular',check:p=>p.topMerchants&&p.topMerchants.some(m=>['Starbucks','Costa','Pret'].includes(m.merchant)&&m.count>8)}
 ];
 
@@ -211,13 +216,78 @@ const BLINDSPOT_RULES=[
 ];
 
 
+// PDF TEXT EXTRACTION
+const extractPDFText=async(file)=>{
+const arrayBuffer=await file.arrayBuffer();
+const pdf=await pdfjsLib.getDocument({data:arrayBuffer}).promise;
+const maxPages=Math.min(pdf.numPages,30);
+const lines=[];
+for(let i=1;i<=maxPages;i++){
+const page=await pdf.getPage(i);
+const content=await page.getTextContent();
+const lineMap={};
+content.items.forEach(item=>{
+const y=Math.round(item.transform[5]);
+if(!lineMap[y])lineMap[y]=[];
+lineMap[y].push({x:item.transform[4],text:item.str});
+});
+const sortedYs=Object.keys(lineMap).map(Number).sort((a,b)=>b-a);
+sortedYs.forEach(y=>{
+const items=lineMap[y].sort((a,b)=>a.x-b.x);
+const line=items.map(it=>it.text).join('  ');
+if(line.trim())lines.push(line);
+});
+}
+return lines.join('\n');
+};
+
+
+// CLAUDE API HELPER — used only for backend enrichment, never exposed in UI
+const callClaude=async(prompt,maxTokens=2048)=>{
+if(!CLAUDE_CONFIG.apiKey)return null;
+try{
+const resp=await fetch('https://api.anthropic.com/v1/messages',{
+method:'POST',
+headers:{'Content-Type':'application/json','x-api-key':CLAUDE_CONFIG.apiKey,'anthropic-version':CLAUDE_CONFIG.apiVersion,'anthropic-dangerous-direct-browser-access':'true'},
+body:JSON.stringify({model:CLAUDE_CONFIG.model,max_tokens:maxTokens,messages:[{role:'user',content:prompt}]})
+});
+if(!resp.ok)return null;
+const data=await resp.json();
+return data.content?.[0]?.text||null;
+}catch(e){return null}
+};
+
+
 // ENRICHMENT ENGINE
 class EnrichmentEngine{
-enrich(rawTexts){
+async enrich(rawTexts,onStatus){
 const allTx=[];
-rawTexts.forEach(text=>{allTx.push(...this.parseCSV(text))});
+
+// Step 1: Parse all texts
+onStatus?.('Parsing your files...');
+for(const text of rawTexts){
+let txs=this.parseCSV(text);
+if(txs.length<3&&text.length>100){
+// Likely a PDF or poorly formatted file — use Claude to extract structured data
+onStatus?.('Extracting transactions...');
+const structured=await this.structureWithClaude(text);
+if(structured){const parsed=this.parseCSV(structured);if(parsed.length>txs.length)txs=parsed}
+}
+allTx.push(...txs);
+}
+
 allTx.sort((a,b)=>(a.date||0)-(b.date||0));
-const enriched=allTx.map(tx=>this.enrichTransaction(tx));
+
+// Step 2: Local merchant identification and categorisation
+onStatus?.('Identifying transactions...');
+let enriched=allTx.map(tx=>this.enrichTransaction(tx));
+
+// Step 3: FINAL ENRICHMENT STEP — Claude API confirmation for uncertain categorisations
+onStatus?.('Confirming categories...');
+enriched=await this.confirmCategories(enriched);
+
+// Step 4: Build profile
+onStatus?.('Building your profile...');
 const recurring=this.detectRecurring(enriched);
 const profile=this.buildProfile(enriched,recurring);
 const archetype=this.determineArchetype(profile);
@@ -228,6 +298,43 @@ const peerComparison=this.calcPeerComparison(profile);
 const insights=this.genInsights(profile);
 const potentialSavings=this.calcSavings(profile);
 return{profile,archetype,traits,strengths,blindSpots,peerComparison,insights,potentialSavings,subscriptions:profile.subscriptions};
+}
+
+// Use Claude to extract CSV from unstructured text (e.g. PDF bank statements)
+async structureWithClaude(rawText){
+const trimmed=rawText.substring(0,12000);
+const prompt=`You are a UK bank statement parser. Extract all transactions from this bank statement text and return them as CSV.\n\nRules:\n- Headers must be: Date,Description,Amount\n- Date format: DD/MM/YYYY\n- Amount: negative for debits/spending, positive for credits/income\n- Only return the CSV data, no explanation or markdown\n- Include every transaction you can identify\n\nBank statement text:\n${trimmed}`;
+const result=await callClaude(prompt,4096);
+return result;
+}
+
+// FINAL STEP: Claude API confirmation for transactions categorised as "Other"
+async confirmCategories(enrichedTxs){
+const uncertain=enrichedTxs.filter(tx=>tx.category==='Other'&&!tx.isIncome&&!tx.isTransfer&&Math.abs(tx.amount)>0);
+if(uncertain.length===0)return enrichedTxs;
+
+const batch=uncertain.slice(0,60);
+const txList=batch.map((tx,i)=>`${i+1}. "${tx.description}" £${Math.abs(tx.amount).toFixed(2)}`).join('\n');
+const prompt=`You are a UK bank transaction categoriser. Categorise these transactions.\n\nReturn a JSON array where each object has:\n- "index": the transaction number (1-based)\n- "merchant": clean merchant name\n- "category": one of: Subscriptions, Groceries, Eating Out, Shopping, Transport, Food Delivery, Bills, Entertainment, Debt Payments, Health, Other\n- "isSubscription": boolean (true ONLY for recurring subscription services like Netflix, Spotify, gym memberships etc.)\n\nTransactions:\n${txList}\n\nReturn ONLY the JSON array, no explanation.`;
+
+try{
+const result=await callClaude(prompt,3000);
+if(!result)return enrichedTxs;
+const jsonMatch=result.match(/\[[\s\S]*\]/);
+if(jsonMatch){
+const categories=JSON.parse(jsonMatch[0]);
+categories.forEach(cat=>{
+const idx=(cat.index||0)-1;
+if(idx>=0&&idx<batch.length){
+if(cat.merchant)batch[idx].merchant=cat.merchant;
+if(cat.category&&cat.category!=='Other')batch[idx].category=cat.category;
+if(typeof cat.isSubscription==='boolean')batch[idx].isSubscription=cat.isSubscription;
+batch[idx].isDebt=cat.category==='Debt Payments';
+}
+});
+}
+}catch(e){/* Silently fall back to local results */}
+return enrichedTxs;
 }
 
 parseCSV(raw){
@@ -373,19 +480,30 @@ const Landing=({onStart})=>(<div style={{minHeight:'100vh',display:'flex',flexDi
       ·  •  ·     ·  •  ·
     •  ✦  •  ·  •  ✦  •
   ·  •  ◉  ✦  ◉  •  ·
-    ✦  •  ◉  ◉  •  ✦`}</pre><h1 style={{fontSize:'clamp(1.3rem,5vw,1.7rem)',fontWeight:600,lineHeight:1.3,marginBottom:'1rem'}}>Discover your<br/><span style={{color:'var(--accent)'}}>Money Personality</span></h1><p style={{color:'var(--dim)',fontSize:'0.9rem',lineHeight:1.7,marginBottom:'2rem'}}>Upload your bank statement.<br/>Get personalised insights in seconds.</p><button onClick={onStart} className="mono" style={{padding:'1rem 2.5rem',background:'var(--accent)',color:'var(--bg)',border:'none',borderRadius:'4px',fontSize:'0.8rem',fontWeight:700,cursor:'pointer'}}>[ GET STARTED ]</button><div style={{marginTop:'2rem',padding:'1rem',background:'rgba(114,232,176,0.05)',border:'1px solid rgba(114,232,176,0.1)',borderRadius:'8px'}}><p style={{color:'var(--mint)',fontSize:'0.75rem',fontWeight:600,marginBottom:'0.5rem'}}>🛡️ Your data is safe</p><p style={{color:'var(--dim)',fontSize:'0.7rem',lineHeight:1.6}}>Your bank data never leaves your device. All analysis happens in your browser — we do not collect, store, or transmit any of your financial information.</p></div></div></div>);
+    ✦  •  ◉  ◉  •  ✦`}</pre><h1 style={{fontSize:'clamp(1.3rem,5vw,1.7rem)',fontWeight:600,lineHeight:1.3,marginBottom:'1rem'}}>Discover your<br/><span style={{color:'var(--accent)'}}>Money Personality</span></h1><p style={{color:'var(--dim)',fontSize:'0.9rem',lineHeight:1.7,marginBottom:'2rem'}}>Upload your bank statement.<br/>Get personalised insights in seconds.</p><button onClick={onStart} className="mono" style={{padding:'1rem 2.5rem',background:'var(--accent)',color:'var(--bg)',border:'none',borderRadius:'4px',fontSize:'0.8rem',fontWeight:700,cursor:'pointer'}}>[ GET STARTED ]</button><div style={{marginTop:'2rem',padding:'1rem',background:'rgba(114,232,176,0.05)',border:'1px solid rgba(114,232,176,0.1)',borderRadius:'8px'}}><p style={{color:'var(--mint)',fontSize:'0.75rem',fontWeight:600,marginBottom:'0.5rem'}}>🛡️ Your data is safe</p><p style={{color:'var(--dim)',fontSize:'0.7rem',lineHeight:1.6}}>Your bank data is processed securely. We do not store your bank statements — we only analyse transaction patterns to build your profile.</p></div></div></div>);
 
 // UPLOAD
-const Upload=({onDone,onBack})=>{const[files,setFiles]=useState([]);const[status,setStatus]=useState('idle');const[err,setErr]=useState('');const ref=useRef();
-const addFiles=newF=>{const csvs=Array.from(newF).filter(f=>f.name.toLowerCase().endsWith('.csv'));if(!csvs.length){setErr('Please upload CSV files only');return}setFiles(p=>[...p,...csvs]);setErr('')};
+const Upload=({onDone,onBack})=>{const[files,setFiles]=useState([]);const[status,setStatus]=useState('idle');const[statusMsg,setStatusMsg]=useState('');const[err,setErr]=useState('');const ref=useRef();
+const addFiles=newF=>{const valid=Array.from(newF).filter(f=>{const n=f.name.toLowerCase();return n.endsWith('.csv')||n.endsWith('.pdf')});if(!valid.length){setErr('Please upload CSV or PDF files');return}setFiles(p=>[...p,...valid]);setErr('')};
 const removeFile=i=>setFiles(p=>p.filter((_,idx)=>idx!==i));
-const analyse=async()=>{if(!files.length){setErr('Please upload at least one file');return}setStatus('parsing');setErr('');try{const texts=await Promise.all(files.map(f=>f.text()));const engine=new EnrichmentEngine();const result=engine.enrich(texts);if(result.profile.transactionCount<5){setErr('Not enough transactions found.');setStatus('idle');return}onDone(result)}catch(e){console.error(e);setErr('Could not read files.');setStatus('idle')}};
+const getFileIcon=name=>name.toLowerCase().endsWith('.pdf')?'📑':'📄';
+const analyse=async()=>{if(!files.length){setErr('Please upload at least one file');return}setStatus('parsing');setStatusMsg('Parsing your files...');setErr('');try{
+const texts=[];
+for(const f of files){
+if(f.name.toLowerCase().endsWith('.pdf')){
+try{const pdfText=await extractPDFText(f);texts.push(pdfText)}catch(e){setErr('Could not read PDF: '+f.name+'. Please ensure it is not password-protected.');setStatus('idle');return}
+}else{texts.push(await f.text())}
+}
+const engine=new EnrichmentEngine();
+const result=await engine.enrich(texts,msg=>setStatusMsg(msg));
+if(result.profile.transactionCount<5){setErr('Not enough transactions found. Please check your file format.');setStatus('idle');return}
+onDone(result)}catch(e){console.error(e);setErr('Could not process files. Please try again.');setStatus('idle')}};
 if(status==='parsing')return(<div style={{minHeight:'100vh',display:'flex',flexDirection:'column',justifyContent:'center',alignItems:'center',padding:'2rem',position:'relative',zIndex:1}}><pre className="mono" style={{color:'var(--accent)',marginBottom:'1rem',animation:'pulse 1s infinite'}}>{`  ◉ ◉ ◉
  ◉     ◉
-◉  ✦  ◉`}</pre><p style={{fontSize:'0.9rem',color:'var(--dim)'}}>Analysing your transactions...</p></div>);
-return(<div style={{minHeight:'100vh',display:'flex',flexDirection:'column',justifyContent:'center',alignItems:'center',padding:'6rem 1.5rem 3rem',position:'relative',zIndex:1}}><div className="slide-up" style={{maxWidth:'420px',width:'100%'}}><h2 style={{fontSize:'1.1rem',fontWeight:600,marginBottom:'0.5rem',textAlign:'center'}}>Upload your statements</h2><p style={{color:'var(--dim)',marginBottom:'1rem',fontSize:'0.85rem',textAlign:'center'}}>Export CSV from your banking app<br/><span style={{color:'var(--muted)',fontSize:'0.75rem'}}>You can upload multiple files</span></p><div style={{display:'flex',justifyContent:'center',gap:'0.5rem',marginBottom:'1.5rem'}}><span className="trust-badge" style={{fontSize:'0.6rem'}}>🔒 Encrypted</span><span className="trust-badge" style={{fontSize:'0.6rem'}}>📱 Local only</span></div><div onClick={()=>ref.current?.click()} onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();addFiles(e.dataTransfer.files)}} style={{padding:'2rem',border:'1px dashed var(--border)',borderRadius:'8px',cursor:'pointer',marginBottom:'1rem',textAlign:'center'}}><input ref={ref} type="file" accept=".csv" multiple onChange={e=>addFiles(e.target.files)} style={{display:'none'}}/><pre className="mono" style={{color:'var(--dim)',fontSize:'0.5rem',marginBottom:'0.75rem'}}>{`   ┌─────────┐
-   │  .CSV   │
-   └─────────┘`}</pre><p style={{color:'#fff',fontSize:'0.85rem',marginBottom:'0.2rem'}}>Drop files here</p><p style={{color:'var(--muted)',fontSize:'0.75rem'}}>or click to browse</p></div>{files.length>0&&(<div style={{marginBottom:'1rem'}}><p className="mono" style={{fontSize:'0.65rem',color:'var(--dim)',marginBottom:'0.5rem'}}>{files.length} file{files.length>1?'s':''} selected:</p><div style={{display:'flex',flexWrap:'wrap'}}>{files.map((f,i)=>(<span key={i} className="file-chip">📄 {f.name.length>20?f.name.substring(0,17)+'...':f.name}<button onClick={()=>removeFile(i)}>×</button></span>))}</div></div>)}{err&&<p style={{color:'var(--coral)',fontSize:'0.8rem',marginBottom:'1rem',textAlign:'center'}}>{err}</p>}<button onClick={analyse} disabled={!files.length} className="mono" style={{width:'100%',padding:'0.9rem',background:files.length?'var(--accent)':'transparent',color:files.length?'var(--bg)':'var(--muted)',border:files.length?'none':'1px solid var(--border)',borderRadius:'6px',fontSize:'0.8rem',fontWeight:700,cursor:files.length?'pointer':'not-allowed',marginBottom:'1rem'}}>[ ANALYSE {files.length?files.length+' FILE'+(files.length>1?'S':''):''} ]</button><button onClick={onBack} style={{display:'block',width:'100%',background:'none',border:'none',color:'var(--muted)',fontSize:'0.8rem',cursor:'pointer'}}>← back</button></div></div>)};
+◉  ✦  ◉`}</pre><p style={{fontSize:'0.9rem',color:'var(--dim)'}}>{statusMsg||'Analysing your transactions...'}</p></div>);
+return(<div style={{minHeight:'100vh',display:'flex',flexDirection:'column',justifyContent:'center',alignItems:'center',padding:'6rem 1.5rem 3rem',position:'relative',zIndex:1}}><div className="slide-up" style={{maxWidth:'420px',width:'100%'}}><h2 style={{fontSize:'1.1rem',fontWeight:600,marginBottom:'0.5rem',textAlign:'center'}}>Upload your statements</h2><p style={{color:'var(--dim)',marginBottom:'1rem',fontSize:'0.85rem',textAlign:'center'}}>Export CSV or PDF from your banking app<br/><span style={{color:'var(--muted)',fontSize:'0.75rem'}}>You can upload multiple files</span></p><div style={{display:'flex',justifyContent:'center',gap:'0.5rem',marginBottom:'1.5rem'}}><span className="trust-badge" style={{fontSize:'0.6rem'}}>🔒 Encrypted</span><span className="trust-badge" style={{fontSize:'0.6rem'}}>📱 Local only</span></div><div onClick={()=>ref.current?.click()} onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();addFiles(e.dataTransfer.files)}} style={{padding:'2rem',border:'1px dashed var(--border)',borderRadius:'8px',cursor:'pointer',marginBottom:'1rem',textAlign:'center'}}><input ref={ref} type="file" accept=".csv,.pdf" multiple onChange={e=>addFiles(e.target.files)} style={{display:'none'}}/><pre className="mono" style={{color:'var(--dim)',fontSize:'0.5rem',marginBottom:'0.75rem'}}>{`   ┌──────────────┐
+   │  .CSV  .PDF  │
+   └──────────────┘`}</pre><p style={{color:'#fff',fontSize:'0.85rem',marginBottom:'0.2rem'}}>Drop files here</p><p style={{color:'var(--muted)',fontSize:'0.75rem'}}>or click to browse</p></div>{files.length>0&&(<div style={{marginBottom:'1rem'}}><p className="mono" style={{fontSize:'0.65rem',color:'var(--dim)',marginBottom:'0.5rem'}}>{files.length} file{files.length>1?'s':''} selected:</p><div style={{display:'flex',flexWrap:'wrap'}}>{files.map((f,i)=>(<span key={i} className="file-chip">{getFileIcon(f.name)} {f.name.length>20?f.name.substring(0,17)+'...':f.name}<button onClick={()=>removeFile(i)}>×</button></span>))}</div></div>)}{err&&<p style={{color:'var(--coral)',fontSize:'0.8rem',marginBottom:'1rem',textAlign:'center'}}>{err}</p>}<button onClick={analyse} disabled={!files.length} className="mono" style={{width:'100%',padding:'0.9rem',background:files.length?'var(--accent)':'transparent',color:files.length?'var(--bg)':'var(--muted)',border:files.length?'none':'1px solid var(--border)',borderRadius:'6px',fontSize:'0.8rem',fontWeight:700,cursor:files.length?'pointer':'not-allowed',marginBottom:'1rem'}}>[ ANALYSE {files.length?files.length+' FILE'+(files.length>1?'S':''):''} ]</button><button onClick={onBack} style={{display:'block',width:'100%',background:'none',border:'none',color:'var(--muted)',fontSize:'0.8rem',cursor:'pointer'}}>← back</button></div></div>)};
 
 
 // CARD
