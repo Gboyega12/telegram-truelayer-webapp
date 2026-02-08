@@ -51,7 +51,10 @@ lifestyle_investor:"    *  .  *\\n   . \\\\__/ .\\n    *  .  *",
 quiet_builder:"       /\\\\\\n      /  \\\\\\n     / $$ \\\\\\n    /______\\\\",
 edge_walker:"   ~~~~~~~~~\\n   | O  O |\\n   ~~~~~~~~~",
 debt_juggler:"    O   O   O\\n     \\\\ | /\\n      \\\\|/\\n       *",
-balanced_realist:"   +-------+\\n   |  ===  |\\n   +-------+"
+balanced_realist:"   +-------+\\n   |  ===  |\\n   +-------+",
+impulse_surfer:"    ~ ~ ~ ~\\n   ~  $$$  ~\\n    ~ ~ ~ ~",
+comfort_spender:"    .  *  .\\n   * (~~) *\\n    .  *  .",
+side_hustler:"   $$  >>  $$\\n   ||  >>  ||\\n   $$  >>  $$"
 };
 
 
@@ -129,14 +132,17 @@ const MERCHANT_DB={
 'bolt':{name:'Bolt',category:'Transport',isSubscription:false},
 'addison lee':{name:'Addison Lee',category:'Transport',isSubscription:false},
 
-// FOOD DELIVERY (isSubscription: false)
+// FOOD DELIVERY (isSubscription: false) — delivery apps ONLY, NOT grocery shops
 'deliveroo':{name:'Deliveroo',category:'Food Delivery',isSubscription:false},
 'uber eats':{name:'Uber Eats',category:'Food Delivery',isSubscription:false},
 'ubereats':{name:'Uber Eats',category:'Food Delivery',isSubscription:false},
 'just eat':{name:'Just Eat',category:'Food Delivery',isSubscription:false},
 'justeat':{name:'Just Eat',category:'Food Delivery',isSubscription:false},
+'gousto':{name:'Gousto',category:'Food Delivery',isSubscription:false},
+'hello fresh':{name:'HelloFresh',category:'Food Delivery',isSubscription:false},
+'hellofresh':{name:'HelloFresh',category:'Food Delivery',isSubscription:false},
 
-// GROCERIES
+// GROCERIES — supermarkets and grocery shops, NOT food delivery
 'tesco':{name:'Tesco',category:'Groceries',isSubscription:false},
 'sainsbury':{name:'Sainsburys',category:'Groceries',isSubscription:false},
 'asda':{name:'ASDA',category:'Groceries',isSubscription:false},
@@ -145,6 +151,14 @@ const MERCHANT_DB={
 'lidl':{name:'Lidl',category:'Groceries',isSubscription:false},
 'waitrose':{name:'Waitrose',category:'Groceries',isSubscription:false},
 'ocado':{name:'Ocado',category:'Groceries',isSubscription:false},
+'iceland':{name:'Iceland',category:'Groceries',isSubscription:false},
+'marks spencer':{name:'M&S Food',category:'Groceries',isSubscription:false},
+'m&s':{name:'M&S Food',category:'Groceries',isSubscription:false},
+'co-op':{name:'Co-op',category:'Groceries',isSubscription:false},
+'coop':{name:'Co-op',category:'Groceries',isSubscription:false},
+'whole foods':{name:'Whole Foods',category:'Groceries',isSubscription:false},
+'getir':{name:'Getir',category:'Groceries',isSubscription:false},
+'gorillas':{name:'Gorillas',category:'Groceries',isSubscription:false},
 
 // EATING OUT
 'starbucks':{name:'Starbucks',category:'Eating Out',isSubscription:false},
@@ -177,15 +191,18 @@ const MERCHANT_DB={
 };
 
 
-// ARCHETYPES
+// ARCHETYPES — 10 distinct money personalities
 const ARCHETYPES={
-subscription_collector:{name:'The Subscription Collector',emoji:'📦',color:'#B272E8',vibe:"Your card gets more monthly exercise than you",description:"You have assembled quite the digital empire - streaming services, apps, memberships. Each one seemed essential at signup, but together they are quietly reshaping your bank balance.",moneyStory:"You value access over ownership. You are an early adopter who loves trying new services.",triggers:p=>p.metrics.subscriptionCount>=5||p.monthly.subscriptions>70},
-convenience_seeker:{name:'The Convenience Seeker',emoji:'🛵',color:'#E87272',vibe:"Time is money, so you spend money on time",description:"Deliveroo, Uber, meal kits - your phone is basically a personal assistant. You have optimised your life for convenience.",moneyStory:"You trade money for time without hesitation. The delivery fee is worth not having to cook after a 10-hour day.",triggers:p=>(p.monthly.foodDelivery+(p.monthly.transport||0))>120},
-lifestyle_investor:{name:'The Lifestyle Investor',emoji:'✨',color:'#E8C872',vibe:"You are not spending, you are curating a life",description:"Shopping and experiences are not expenses in your mind - they are investments in who you are becoming.",moneyStory:"You spend on identity. The clothes, the events, the meals out - they are all part of the story you are writing.",triggers:p=>((p.monthly.shopping||0)+(p.monthly.entertainment||0))>150},
-quiet_builder:{name:'The Quiet Builder',emoji:'🌱',color:'#72E8B0',vibe:"Your future self is already thanking you",description:"While others are chasing the next dopamine hit, you are quietly building wealth.",moneyStory:"You think in decades, not weekends. Compound interest excites you more than flash sales.",triggers:p=>p.metrics.savingsRate>20},
-edge_walker:{name:'The Edge Walker',emoji:'🎭',color:'#E87272',vibe:"Living life one payday at a time",description:"Your income and spending are in a constant dance, sometimes a little too close for comfort.",moneyStory:"You are not irresponsible - you are just living in an expensive world on a salary that has not caught up.",triggers:p=>p.metrics.savingsRate<5||p.monthly.surplus<100},
-debt_juggler:{name:'The Debt Juggler',emoji:'🎪',color:'#E8A872',vibe:"Keeping all the balls in the air",description:"Credit cards, BNPL, maybe a loan - you are managing multiple financial obligations.",moneyStory:"You are strategic about which debt to pay when. You know the due dates, the minimum payments.",triggers:p=>p.metrics.debtAccountCount>=3||(p.monthly.debtPayments>0&&p.monthly.debtPayments>p.monthly.income*0.15)},
-balanced_realist:{name:'The Balanced Realist',emoji:'⚖️',color:'#72B0E8',vibe:"Boring is your financial superpower",description:"No extreme patterns here - just steady, sensible money management.",moneyStory:"You do not obsess over money, but you do not ignore it either. Bills get paid, some savings happen.",triggers:p=>true}
+subscription_collector:{name:'The Subscription Collector',emoji:'📦',color:'#B272E8',vibe:"Your card gets more monthly exercise than you",description:"You have assembled quite the digital empire — streaming services, apps, memberships. Each one seemed essential at signup, but together they are quietly reshaping your bank balance.",genMoneyStory:p=>{const subs=p.subscriptions||[];const total=p.monthly.subscriptions;const names=subs.slice(0,4).map(s=>s.merchant).join(', ');return`You are paying for ${subs.length} subscriptions totalling £${total}/month (£${total*12}/year). That includes ${names}${subs.length>4?' and '+(subs.length-4)+' more':''}. Each one felt worth it at the time. Together, they represent ${p.monthly.income>0?Math.round((total/p.monthly.income)*100)+'% of your income':'a significant outgoing'}. The question is not whether you can afford them — it is whether you actually use them all.`},triggers:p=>p.metrics.subscriptionCount>=5||p.monthly.subscriptions>70},
+convenience_seeker:{name:'The Convenience Seeker',emoji:'🛵',color:'#E87272',vibe:"Time is money, so you spend money on time",description:"Deliveroo, Uber, meal kits — your phone is basically a personal assistant. You have optimised your life for convenience, but at a premium.",genMoneyStory:p=>{const fd=p.monthly.foodDelivery;const tr=p.monthly.transport||0;const topDel=p.topMerchants?.find(m=>['Deliveroo','Uber Eats','Just Eat'].includes(m.merchant));return`You are spending £${fd}/month on food delivery${tr>80?' and £'+tr+'/month on transport':''} — that is £${(fd+tr)*12}/year on convenience alone.${topDel?' Your most frequent is '+topDel.merchant+' ('+topDel.count+' orders).':''} Cooking at home would save you roughly £${Math.round(fd*0.4*12)}/year, but you are paying for time, not just food.`},triggers:p=>(p.monthly.foodDelivery+(p.monthly.transport||0))>120},
+lifestyle_investor:{name:'The Lifestyle Investor',emoji:'✨',color:'#E8C872',vibe:"You are not spending, you are curating a life",description:"Shopping, dining, experiences — these are not expenses in your mind. They are investments in the version of yourself you are building.",genMoneyStory:p=>{const shop=p.monthly.shopping||0;const ent=p.monthly.entertainment||0;const eat=p.monthly.eatingOut||0;const total=shop+ent+eat;return`You are putting £${total}/month (£${total*12}/year) into lifestyle spending — £${shop} on shopping${ent>0?', £'+ent+' on entertainment':''}${eat>0?', £'+eat+' eating out':''}. ${p.monthly.income>0?'That is '+Math.round((total/p.monthly.income)*100)+'% of your income going to how you live, not just what you need.':'That is a significant investment in your quality of life.'} You know what you like and you are willing to pay for it.`},triggers:p=>((p.monthly.shopping||0)+(p.monthly.entertainment||0)+(p.monthly.eatingOut||0))>200},
+quiet_builder:{name:'The Quiet Builder',emoji:'🌱',color:'#72E8B0',vibe:"Your future self is already thanking you",description:"While others chase the next dopamine hit, you are quietly building wealth. Your discipline will compound in ways most people do not understand yet.",genMoneyStory:p=>{const sr=p.metrics.savingsRate;const surplus=p.monthly.surplus;return`You are saving ${sr}% of your income — £${surplus}/month, or roughly £${surplus*12}/year. That puts you well above the UK average savings rate of ${UK_BENCHMARKS.savingsRate}%.${p.metrics.subscriptionCount<=3?' You keep subscriptions lean (just '+p.metrics.subscriptionCount+').':''} ${p.metrics.debtAccountCount===0?'You carry no debt.':'You are managing debt while still saving — that takes discipline.'} At this rate, in 5 years you will have set aside around £${Math.round(surplus*60).toLocaleString()} before any investment growth.`},triggers:p=>p.metrics.savingsRate>20},
+edge_walker:{name:'The Edge Walker',emoji:'🎭',color:'#E87272',vibe:"Living life one payday at a time",description:"Your income and spending are in a constant dance, sometimes a little too close for comfort. You make it work, but there is no buffer.",genMoneyStory:p=>{const sr=p.metrics.savingsRate;const surplus=p.monthly.surplus;const topCat=p.categories[0];return`Your savings rate is ${sr}%${surplus>0?' — roughly £'+surplus+'/month left over':' — you are spending almost everything you earn'}. Your biggest outgoing is ${topCat?topCat.name+' (£'+topCat.total+')':'hard to pin down'}. ${p.monthly.foodDelivery>50?'Food delivery alone is costing you £'+p.monthly.foodDelivery+'/month. ':''}This is not about being irresponsible — it is about the gap between cost of living and what you earn. One unexpected bill could tip the balance.`},triggers:p=>p.metrics.savingsRate<5&&p.metrics.savingsRate>=-10},
+debt_juggler:{name:'The Debt Juggler',emoji:'🎪',color:'#E8A872',vibe:"Keeping all the balls in the air",description:"Credit cards, BNPL, maybe a loan — you are managing multiple financial obligations with precision. The question is whether you are juggling or drowning.",genMoneyStory:p=>{const dp=p.debtPayments||[];const total=p.monthly.debtPayments;const names=dp.slice(0,3).map(d=>d.merchant).join(', ');const pct=p.monthly.income>0?Math.round((total/p.monthly.income)*100):0;return`You have ${dp.length} debt obligation${dp.length>1?'s':''}: ${names}. That is £${total}/month (£${total*12}/year) — ${pct}% of your income going to servicing debt.${p.metrics.bnplCount>0?' You have '+p.metrics.bnplCount+' active BNPL account'+(p.metrics.bnplCount>1?'s':'')+'.':''} ${pct>25?'That is a heavy debt load. Consolidation or faster repayment could save you significantly in interest.':'You are keeping it manageable, but clearing these would free up real monthly cashflow.'}`},triggers:p=>p.metrics.debtAccountCount>=3||(p.monthly.debtPayments>0&&p.monthly.debtPayments>p.monthly.income*0.15)},
+impulse_surfer:{name:'The Impulse Surfer',emoji:'⚡',color:'#E8D572',vibe:"See it. Want it. Tap. Done.",description:"Your spending spikes unpredictably — a calm week followed by a burst. Shopping is emotional, spontaneous, and satisfying in the moment.",genMoneyStory:p=>{const shop=p.monthly.shopping||0;const topShop=p.topMerchants?.find(m=>['Amazon','ASOS','Zara','IKEA'].includes(m.merchant));return`You are spending £${shop}/month on shopping (£${shop*12}/year).${topShop?' '+topShop.merchant+' alone accounts for '+topShop.count+' transactions.':''} Your spending pattern suggests impulse — not planned purchases, but reactive ones. The average transaction size and frequency point to someone who shops as a response to how they feel, not what they need. That is not a moral failing — but it is expensive.`},triggers:p=>{const shop=p.monthly.shopping||0;const topShop=p.topMerchants?.filter(m=>['Amazon','ASOS','Zara','IKEA'].includes(m.merchant))||[];const highFreq=topShop.some(m=>m.count>6);return shop>120&&(highFreq||shop>200)}},
+comfort_spender:{name:'The Comfort Spender',emoji:'☕',color:'#C8A872',vibe:"A little treat never hurt anyone... right?",description:"Coffee runs, meals out, small luxuries — your spending is death by a thousand cuts. Each purchase is tiny, but they add up to a lifestyle.",genMoneyStory:p=>{const eat=p.monthly.eatingOut||0;const fd=p.monthly.foodDelivery||0;const groc=p.monthly.groceries||0;const coffeeMerch=p.topMerchants?.filter(m=>['Starbucks','Costa','Pret','Greggs'].includes(m.merchant))||[];const coffeeTotal=coffeeMerch.reduce((s,m)=>s+m.total,0);return`You are spending £${eat}/month eating out${coffeeTotal>0?' (including an estimated £'+Math.round(coffeeTotal)+' on coffee and quick bites)':''}${fd>30?', plus £'+fd+'/month on delivery':''}.${groc>0?' Groceries add another £'+groc+'.':''} Your food-related spending totals roughly £${eat+fd+groc}/month (£${(eat+fd+groc)*12}/year). You are a grazer — frequent, small transactions that feel harmless individually but form your biggest spending category.`},triggers:p=>{const eat=p.monthly.eatingOut||0;const coffeeMerch=p.topMerchants?.filter(m=>['Starbucks','Costa','Pret','Greggs'].includes(m.merchant))||[];return eat>100||coffeeMerch.length>=2}},
+side_hustler:{name:'The Side Hustler',emoji:'💰',color:'#72E8D5',vibe:"Multiple income streams, one ambitious brain",description:"You have income coming from more than one place. Whether it is freelancing, selling, or investing — you understand that one salary is a single point of failure.",genMoneyStory:p=>{const inc=p.monthly.income;const sr=p.metrics.savingsRate;return`Your monthly income of £${inc} includes multiple sources — you are not relying on a single paycheck.${sr>15?' You are saving '+sr+'% of your total income, which shows real financial awareness.':' Despite the extra income, your savings rate is '+sr+'% — the hustle is funding lifestyle, not reserves.'} ${p.monthly.subscriptions>50?'You invest £'+p.monthly.subscriptions+'/month in tools and subscriptions — the cost of doing business.':'You keep your overheads lean.'} The question is whether the side income is growing or if you are running to stand still.`},triggers:p=>{const incTxs=p.incomeStreams||0;return incTxs>=2&&p.monthly.income>0}},
+balanced_realist:{name:'The Balanced Realist',emoji:'⚖️',color:'#72B0E8',vibe:"Boring is your financial superpower",description:"No extreme patterns here — just steady, sensible money management. You will not make the news, but you will make retirement.",genMoneyStory:p=>{const sr=p.metrics.savingsRate;const surplus=p.monthly.surplus;return`You are saving ${sr}% of your income (£${surplus}/month). Your spending is spread across categories without any single area dominating.${p.metrics.subscriptionCount>0?' You have '+p.metrics.subscriptionCount+' subscription'+(p.metrics.subscriptionCount>1?'s':'')+' (£'+p.monthly.subscriptions+'/mo).':''} ${p.metrics.debtAccountCount===0?'You carry no debt obligations.':'You have '+p.metrics.debtAccountCount+' debt payment'+(p.metrics.debtAccountCount>1?'s':'')+' but they are proportionate.'} This is what quiet financial confidence looks like. The risk is complacency — being "fine" can mean missing opportunities to be great.`},triggers:p=>true}
 };
 
 // TRAITS
@@ -196,7 +213,11 @@ const SUB_TRAITS=[
 {id:'commuter',emoji:'🚂',text:'Commuter',check:p=>p.monthly.transport>150},
 {id:'streaming',emoji:'📺',text:'Streaming heavy',check:p=>p.metrics.streamingCount>=3},
 {id:'techsub',emoji:'💻',text:'Tech subscriber',check:p=>p.subscriptions&&p.subscriptions.some(s=>['ChatGPT','Claude','Midjourney','Cursor','Lovable'].includes(s.merchant))},
-{id:'coffee',emoji:'☕',text:'Coffee regular',check:p=>p.topMerchants&&p.topMerchants.some(m=>['Starbucks','Costa','Pret'].includes(m.merchant)&&m.count>8)}
+{id:'coffee',emoji:'☕',text:'Coffee regular',check:p=>p.topMerchants&&p.topMerchants.some(m=>['Starbucks','Costa','Pret'].includes(m.merchant)&&m.count>8)},
+{id:'impulse',emoji:'⚡',text:'Impulse buyer',check:p=>(p.monthly.shopping||0)>150},
+{id:'foodie',emoji:'🍽️',text:'Foodie',check:p=>((p.monthly.eatingOut||0)+p.monthly.foodDelivery)>150},
+{id:'saver',emoji:'🌱',text:'Active saver',check:p=>p.metrics.savingsRate>25},
+{id:'grocery',emoji:'🛒',text:'Home cook',check:p=>(p.monthly.groceries||0)>(p.monthly.foodDelivery||0)*2&&(p.monthly.groceries||0)>100}
 ];
 
 // RULES
@@ -315,7 +336,7 @@ if(uncertain.length===0)return enrichedTxs;
 
 const batch=uncertain.slice(0,60);
 const txList=batch.map((tx,i)=>`${i+1}. "${tx.description}" £${Math.abs(tx.amount).toFixed(2)}`).join('\n');
-const prompt=`You are a UK bank transaction categoriser. Categorise these transactions.\n\nReturn a JSON array where each object has:\n- "index": the transaction number (1-based)\n- "merchant": clean merchant name\n- "category": one of: Subscriptions, Groceries, Eating Out, Shopping, Transport, Food Delivery, Bills, Entertainment, Debt Payments, Health, Other\n- "isSubscription": boolean (true ONLY for recurring subscription services like Netflix, Spotify, gym memberships etc.)\n\nTransactions:\n${txList}\n\nReturn ONLY the JSON array, no explanation.`;
+const prompt=`You are a UK bank transaction categoriser. Categorise these transactions accurately.\n\nCRITICAL DISTINCTION:\n- "Groceries" = supermarkets and grocery shops where people buy food to cook at home (Tesco, Sainsburys, ASDA, Aldi, Lidl, Morrisons, Waitrose, Ocado, Iceland, M&S Food, Co-op, Whole Foods)\n- "Food Delivery" = apps/services that deliver prepared restaurant food or meal kits to your door (Deliveroo, Uber Eats, Just Eat, Gousto, HelloFresh)\n- "Eating Out" = restaurants, cafes, coffee shops where you eat/drink on premises (Starbucks, Costa, Pret, Nandos, McDonalds, Wagamama, Greggs)\n\nDo NOT confuse grocery shopping with food delivery. They are fundamentally different spending behaviours.\n\nReturn a JSON array where each object has:\n- "index": the transaction number (1-based)\n- "merchant": clean merchant name\n- "category": one of: Subscriptions, Groceries, Eating Out, Shopping, Transport, Food Delivery, Bills, Entertainment, Debt Payments, Health, Other\n- "isSubscription": boolean (true ONLY for recurring subscription services like Netflix, Spotify, gym memberships etc.)\n\nTransactions:\n${txList}\n\nReturn ONLY the JSON array, no explanation.`;
 
 try{
 const result=await callClaude(prompt,3000);
@@ -429,16 +450,21 @@ const byMerch={};
 spending.forEach(tx=>{if(!tx.merchant)return;if(!byMerch[tx.merchant])byMerch[tx.merchant]={total:0,count:0};byMerch[tx.merchant].total+=Math.abs(tx.amount);byMerch[tx.merchant].count++});
 const topMerchants=Object.entries(byMerch).map(([merchant,d])=>({merchant,total:Math.round(d.total),count:d.count})).sort((a,b)=>b.total-a.total).slice(0,10);
 
+// Count distinct income sources
+const incomeDescs=new Set();
+income.forEach(tx=>{const n=tx.descNorm||'';const key=n.split(' ').slice(0,2).join(' ');if(key)incomeDescs.add(key)});
+const incomeStreams=incomeDescs.size;
+
 return{
 transactionCount:txs.length,
-monthly:{income:Math.round(totalIncome),spending:Math.round(totalSpending),surplus:Math.round(surplus),subscriptions:Math.round(subTotal),debtPayments:Math.round(debtTotal),foodDelivery:Math.round(byCat['Food Delivery']?.total||0),shopping:Math.round(byCat['Shopping']?.total||0),entertainment:Math.round(byCat['Entertainment']?.total||0),groceries:Math.round(byCat['Groceries']?.total||0),transport:Math.round(byCat['Transport']?.total||0)},
+monthly:{income:Math.round(totalIncome),spending:Math.round(totalSpending),surplus:Math.round(surplus),subscriptions:Math.round(subTotal),debtPayments:Math.round(debtTotal),foodDelivery:Math.round(byCat['Food Delivery']?.total||0),shopping:Math.round(byCat['Shopping']?.total||0),entertainment:Math.round(byCat['Entertainment']?.total||0),groceries:Math.round(byCat['Groceries']?.total||0),transport:Math.round(byCat['Transport']?.total||0),eatingOut:Math.round(byCat['Eating Out']?.total||0)},
 metrics:{savingsRate:totalIncome>0?Math.round((surplus/totalIncome)*100):0,subscriptionCount:subs.length,debtAccountCount:debtPay.length,creditCardCount:creditCards.length,bnplCount:bnpl.length,streamingCount:streaming.length},
-categories,topMerchants,recurring,subscriptions:subs,debtPayments:debtPay
+categories,topMerchants,recurring,subscriptions:subs,debtPayments:debtPay,incomeStreams
 };
 }
 
 determineArchetype(p){
-const order=['debt_juggler','quiet_builder','edge_walker','subscription_collector','convenience_seeker','lifestyle_investor','balanced_realist'];
+const order=['debt_juggler','quiet_builder','edge_walker','subscription_collector','impulse_surfer','convenience_seeker','comfort_spender','lifestyle_investor','side_hustler','balanced_realist'];
 for(const k of order){try{if(ARCHETYPES[k].triggers(p))return{key:k,...ARCHETYPES[k]}}catch{}}
 return{key:'balanced_realist',...ARCHETYPES.balanced_realist};
 }
@@ -453,18 +479,29 @@ return comps.slice(0,4);
 
 genInsights(p){
 const ins=[],m=p.monthly;
-if(p.subscriptions.length>0){ins.push({type:'subscriptions',text:'You have '+p.subscriptions.length+' active subscriptions (£'+m.subscriptions+'/mo): '+p.subscriptions.slice(0,4).map(s=>s.merchant).join(', ')+(p.subscriptions.length>4?' and '+(p.subscriptions.length-4)+' more':'')+'.'});}
-if(p.debtPayments.length>0){ins.push({type:'debt',text:'You have '+p.debtPayments.length+' debt payment'+(p.debtPayments.length>1?'s':'')+' (£'+m.debtPayments+'/mo): '+p.debtPayments.slice(0,3).map(d=>d.merchant).join(', ')+'.'+(m.income>0?' That is '+Math.round((m.debtPayments/m.income)*100)+'% of your income.':'')});}
-if(m.foodDelivery>50){ins.push({type:'delivery',text:'You are spending £'+m.foodDelivery+'/month on food delivery. Cooking typically costs 40% less - that is ~£'+Math.round(m.foodDelivery*0.4*12)+'/year you could redirect.'});}
+if(p.subscriptions.length>0){ins.push({type:'subscriptions',text:'You have '+p.subscriptions.length+' active subscriptions totalling £'+m.subscriptions+'/mo (£'+(m.subscriptions*12)+'/yr): '+p.subscriptions.slice(0,4).map(s=>s.merchant+' £'+s.averageAmount).join(', ')+(p.subscriptions.length>4?' and '+(p.subscriptions.length-4)+' more':'')+'.'});}
+if(p.debtPayments.length>0){ins.push({type:'debt',text:'You have '+p.debtPayments.length+' debt payment'+(p.debtPayments.length>1?'s':'')+' totalling £'+m.debtPayments+'/mo (£'+(m.debtPayments*12)+'/yr): '+p.debtPayments.slice(0,3).map(d=>d.merchant).join(', ')+'.'+(m.income>0?' That is '+Math.round((m.debtPayments/m.income)*100)+'% of your income.':'')});}
+if(m.foodDelivery>50){ins.push({type:'delivery',text:'Food delivery is costing you £'+m.foodDelivery+'/month (£'+(m.foodDelivery*12)+'/yr). Cooking at home for just 2-3 of those orders per week would save roughly £'+Math.round(m.foodDelivery*0.4*12)+'/year.'});}
+if((m.eatingOut||0)>80){ins.push({type:'eatingout',text:'You are spending £'+(m.eatingOut||0)+'/month eating out and on coffee (£'+((m.eatingOut||0)*12)+'/yr). Small daily purchases add up faster than most people realise.'});}
+if((m.groceries||0)>0&&m.foodDelivery>0){const ratio=m.foodDelivery/(m.groceries||1);if(ratio>0.5){ins.push({type:'food',text:'Your food delivery spend (£'+m.foodDelivery+'/mo) is '+Math.round(ratio*100)+'% of your grocery spend (£'+(m.groceries||0)+'/mo). A healthier ratio would be under 25%.'})}}
+if((m.shopping||0)>100){ins.push({type:'shopping',text:'Shopping accounts for £'+(m.shopping||0)+'/month (£'+((m.shopping||0)*12)+'/yr). '+(p.topMerchants?.find(m=>['Amazon','ASOS','Zara','IKEA'].includes(m.merchant))?'Your top retailer is '+p.topMerchants.find(m=>['Amazon','ASOS','Zara','IKEA'].includes(m.merchant)).merchant+'.':'')});}
 return ins;
 }
 
 calcSavings(p){
-let t=0;const m=p.monthly;
-t+=Math.round(m.subscriptions*12*0.3);
-t+=Math.round(m.foodDelivery*12*0.4);
-t+=Math.round(m.debtPayments*12*0.15);
-return Math.max(t,100);
+const m=p.monthly;const items=[];
+const subSave=Math.round(m.subscriptions*12*0.3);
+if(subSave>0)items.push({label:'Optimise subscriptions (cancel unused, downgrade plans)',amount:subSave,detail:'30% of £'+m.subscriptions+'/mo × 12'});
+const delSave=Math.round(m.foodDelivery*12*0.4);
+if(delSave>0)items.push({label:'Reduce food delivery (cook 2-3 more meals/week)',amount:delSave,detail:'40% of £'+m.foodDelivery+'/mo × 12'});
+const debtSave=Math.round(m.debtPayments*12*0.15);
+if(debtSave>0)items.push({label:'Consolidate or accelerate debt repayment',amount:debtSave,detail:'15% interest saving on £'+m.debtPayments+'/mo × 12'});
+const eatSave=Math.round((m.eatingOut||0)*12*0.25);
+if(eatSave>0)items.push({label:'Cut back eating out (1-2 fewer meals/week)',amount:eatSave,detail:'25% of £'+(m.eatingOut||0)+'/mo × 12'});
+const shopSave=Math.round((m.shopping||0)*12*0.2);
+if(shopSave>0)items.push({label:'Reduce impulse shopping (30-day rule)',amount:shopSave,detail:'20% of £'+(m.shopping||0)+'/mo × 12'});
+const total=items.reduce((s,i)=>s+i.amount,0);
+return{total:Math.max(total,0),items};
 }
 }
 
@@ -495,31 +532,42 @@ const Landing=({onStart})=>(<div style={{minHeight:'100vh',display:'flex',flexDi
 
 // UPLOAD
 const Upload=({onDone,onBack,tlCode,onTlCodeUsed})=>{const[files,setFiles]=useState([]);const[status,setStatus]=useState('idle');const[statusMsg,setStatusMsg]=useState('');const[err,setErr]=useState('');const ref=useRef();
+const[bankCSVs,setBankCSVs]=useState([]);const[bankNames,setBankNames]=useState([]);
 const addFiles=newF=>{const valid=Array.from(newF).filter(f=>{const n=f.name.toLowerCase();return n.endsWith('.csv')||n.endsWith('.pdf')});if(!valid.length){setErr('Please upload CSV or PDF files');return}setFiles(p=>[...p,...valid]);setErr('')};
 const removeFile=i=>setFiles(p=>p.filter((_,idx)=>idx!==i));
 const getFileIcon=name=>name.toLowerCase().endsWith('.pdf')?'◉':'○';
-const connectBank=()=>{const redirectUri=encodeURIComponent(TRUELAYER_CONFIG.redirectUri);const scope=encodeURIComponent(TRUELAYER_CONFIG.scope);const providers=encodeURIComponent(TRUELAYER_CONFIG.providers);window.location.href=TRUELAYER_CONFIG.authBaseUrl+'/?response_type=code&client_id='+TRUELAYER_CONFIG.clientId+'&scope='+scope+'&redirect_uri='+redirectUri+'&providers='+providers};
+const connectBank=()=>{if(bankCSVs.length>0){sessionStorage.setItem('bocy_bank_csvs',JSON.stringify(bankCSVs));sessionStorage.setItem('bocy_bank_names',JSON.stringify(bankNames))}const redirectUri=encodeURIComponent(TRUELAYER_CONFIG.redirectUri);const scope=encodeURIComponent(TRUELAYER_CONFIG.scope);const providers=encodeURIComponent(TRUELAYER_CONFIG.providers);window.location.href=TRUELAYER_CONFIG.authBaseUrl+'/?response_type=code&client_id='+TRUELAYER_CONFIG.clientId+'&scope='+scope+'&redirect_uri='+redirectUri+'&providers='+providers};
 const handleTrueLayerCode=async(code)=>{setStatus('parsing');setStatusMsg('Connecting to your bank...');setErr('');try{
+// Restore previously connected bank data
+const prevCSVs=JSON.parse(sessionStorage.getItem('bocy_bank_csvs')||'[]');
+const prevNames=JSON.parse(sessionStorage.getItem('bocy_bank_names')||'[]');
+sessionStorage.removeItem('bocy_bank_csvs');sessionStorage.removeItem('bocy_bank_names');
 const redirectUri=TRUELAYER_CONFIG.redirectUri;
 const resp=await fetch('/api/truelayer/callback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code,redirect_uri:redirectUri})});
 if(!resp.ok){const d=await resp.json().catch(()=>({}));throw new Error(d.error||'Connection failed')}
 const data=await resp.json();
-if(!data.csv||data.transactionCount<1){setErr('No transactions found from your bank. Try uploading a statement instead.');setStatus('idle');return}
+if(!data.csv||data.transactionCount<1){if(prevCSVs.length>0){setBankCSVs(prevCSVs);setBankNames(prevNames)}setErr('No transactions found from this bank. Try a different one or upload a statement.');setStatus('idle');return}
+const newBankName='Bank '+(prevNames.length+1)+' ('+data.transactionCount+' transactions)';
+const allCSVs=[...prevCSVs,data.csv];
+const allNames=[...prevNames,newBankName];
+setBankCSVs(allCSVs);setBankNames(allNames);
 setStatusMsg('Analysing your transactions...');
 const engine=new EnrichmentEngine();
-const result=await engine.enrich([data.csv],msg=>setStatusMsg(msg));
-if(result.profile.transactionCount<5){setErr('Not enough transactions found. Try a different account or upload a statement.');setStatus('idle');return}
+const result=await engine.enrich(allCSVs,msg=>setStatusMsg(msg));
+if(result.profile.transactionCount<5){setErr('Not enough transactions found. Try connecting another account.');setStatus('idle');return}
 onDone(result)}catch(e){console.error(e);setErr('Could not connect to your bank. Please try uploading a statement instead.');setStatus('idle')}};
 useEffect(()=>{if(tlCode){handleTrueLayerCode(tlCode);onTlCodeUsed?.()}},[tlCode]);
-const analyse=async()=>{if(!files.length){setErr('Please upload at least one file');return}setStatus('parsing');setStatusMsg('Parsing your files...');setErr('');try{
-const texts=[];
+const analyse=async()=>{const allTexts=[...bankCSVs];
+try{
 for(const f of files){
 if(f.name.toLowerCase().endsWith('.pdf')){
-try{const pdfText=await extractPDFText(f);texts.push(pdfText)}catch(e){setErr('Could not read PDF: '+f.name+'. Please ensure it is not password-protected.');setStatus('idle');return}
-}else{texts.push(await f.text())}
+try{const pdfText=await extractPDFText(f);allTexts.push(pdfText)}catch(e){setErr('Could not read PDF: '+f.name+'. Please ensure it is not password-protected.');setStatus('idle');return}
+}else{allTexts.push(await f.text())}
 }
+if(!allTexts.length){setErr('Please connect a bank or upload at least one file');return}
+setStatus('parsing');setStatusMsg('Parsing your files...');setErr('');
 const engine=new EnrichmentEngine();
-const result=await engine.enrich(texts,msg=>setStatusMsg(msg));
+const result=await engine.enrich(allTexts,msg=>setStatusMsg(msg));
 if(result.profile.transactionCount<5){setErr('Not enough transactions found. Please check your file format.');setStatus('idle');return}
 onDone(result)}catch(e){console.error(e);setErr('Could not process files. Please try again.');setStatus('idle')}};
 
@@ -543,9 +591,15 @@ return(<div style={{minHeight:'100vh',display:'flex',flexDirection:'column',alig
 
 <div style={{padding:'1.75rem',background:'linear-gradient(180deg,rgba(114,232,176,0.05) 0%,rgba(114,176,232,0.03) 100%)',border:'1px solid rgba(114,232,176,0.1)',borderRadius:'14px',marginBottom:'1.25rem'}}>
 <p className="mono" style={{fontSize:'0.55rem',letterSpacing:'0.15em',color:'var(--mint)',marginBottom:'1.25rem',textTransform:'uppercase'}}>✦ Recommended</p>
-<h3 style={{fontSize:'1.1rem',fontWeight:600,color:'#fff',marginBottom:'0.6rem'}}>Connect your bank</h3>
-<p style={{color:'var(--dim)',fontSize:'0.82rem',lineHeight:1.7,marginBottom:'1.75rem'}}>Securely link your account for the most accurate personality profile. Read-only access — we never see your login details.</p>
-<button onClick={connectBank} className="mono" style={{width:'100%',padding:'1rem',background:'var(--mint)',color:'var(--bg)',border:'none',borderRadius:'8px',fontSize:'0.78rem',fontWeight:700,cursor:'pointer',letterSpacing:'0.03em',marginBottom:'1.5rem'}}>[ CONNECT YOUR BANK ]</button>
+<h3 style={{fontSize:'1.1rem',fontWeight:600,color:'#fff',marginBottom:'0.6rem'}}>Connect your bank{bankNames.length>0?'s':''}</h3>
+<p style={{color:'var(--dim)',fontSize:'0.82rem',lineHeight:1.7,marginBottom:'1.25rem'}}>Securely link your account{bankNames.length>0?'s':''} for the most accurate personality profile. Read-only access — we never see your login details.</p>
+
+{bankNames.length>0&&(<div style={{marginBottom:'1.25rem'}}>{bankNames.map((name,i)=>(<div key={i} style={{display:'flex',alignItems:'center',gap:'0.5rem',padding:'0.5rem 0.75rem',background:'rgba(114,232,176,0.08)',border:'1px solid rgba(114,232,176,0.15)',borderRadius:'8px',marginBottom:'0.5rem'}}><span style={{color:'var(--mint)',fontSize:'0.8rem'}}>✓</span><span style={{color:'var(--text2)',fontSize:'0.82rem'}}>{name}</span></div>))}</div>)}
+
+<button onClick={connectBank} className="mono" style={{width:'100%',padding:'1rem',background:bankNames.length>0?'transparent':'var(--mint)',color:bankNames.length>0?'var(--mint)':'var(--bg)',border:bankNames.length>0?'1px solid rgba(114,232,176,0.3)':'none',borderRadius:'8px',fontSize:'0.78rem',fontWeight:700,cursor:'pointer',letterSpacing:'0.03em',marginBottom:bankNames.length>0?'0.75rem':'1.5rem'}}>{bankNames.length>0?'[ + ADD ANOTHER BANK ]':'[ CONNECT YOUR BANK ]'}</button>
+
+{bankNames.length>0&&(<p style={{color:'var(--dim)',fontSize:'0.75rem',textAlign:'center',marginBottom:'1rem'}}>Connect multiple banks for a complete picture of your finances</p>)}
+
 <div style={{display:'flex',justifyContent:'center',gap:'0.6rem',flexWrap:'wrap'}}><span style={{fontSize:'0.65rem',color:'var(--muted)'}}>FCA Regulated</span><span style={{fontSize:'0.65rem',color:'var(--border)'}}>·</span><span style={{fontSize:'0.65rem',color:'var(--muted)'}}>Bank-level security</span><span style={{fontSize:'0.65rem',color:'var(--border)'}}>·</span><span style={{fontSize:'0.65rem',color:'var(--muted)'}}>TrueLayer</span></div>
 </div>
 
@@ -567,7 +621,7 @@ return(<div style={{minHeight:'100vh',display:'flex',flexDirection:'column',alig
 
 {err&&<div style={{padding:'0.75rem 1rem',background:'rgba(232,114,114,0.06)',border:'1px solid rgba(232,114,114,0.12)',borderRadius:'8px',marginBottom:'1.25rem',textAlign:'center'}}><p style={{color:'var(--coral)',fontSize:'0.8rem'}}>{err}</p></div>}
 
-<button onClick={analyse} disabled={!files.length} className="mono" style={{width:'100%',padding:'1rem',background:files.length?'var(--accent)':'transparent',color:files.length?'var(--bg)':'var(--muted)',border:files.length?'none':'1px solid var(--border)',borderRadius:'8px',fontSize:'0.78rem',fontWeight:700,cursor:files.length?'pointer':'not-allowed'}}>[ ANALYSE {files.length?files.length+' FILE'+(files.length>1?'S':''):''} ]</button>
+<button onClick={analyse} disabled={!files.length&&!bankCSVs.length} className="mono" style={{width:'100%',padding:'1rem',background:(files.length||bankCSVs.length)?'var(--accent)':'transparent',color:(files.length||bankCSVs.length)?'var(--bg)':'var(--muted)',border:(files.length||bankCSVs.length)?'none':'1px solid var(--border)',borderRadius:'8px',fontSize:'0.78rem',fontWeight:700,cursor:(files.length||bankCSVs.length)?'pointer':'not-allowed'}}>[ ANALYSE {files.length?files.length+' FILE'+(files.length>1?'S':'')+(bankCSVs.length?' + '+bankCSVs.length+' BANK'+(bankCSVs.length>1?'S':''):''):bankCSVs.length?bankCSVs.length+' BANK'+(bankCSVs.length>1?'S':''):''} ]</button>
 </div>
 
 <button onClick={onBack} style={{display:'block',width:'100%',background:'none',border:'none',color:'var(--muted)',fontSize:'0.8rem',cursor:'pointer',padding:'1rem 0',marginTop:'0.5rem'}}>← back</button>
@@ -576,13 +630,13 @@ return(<div style={{minHeight:'100vh',display:'flex',flexDirection:'column',alig
 
 
 // CARD
-const ResultCard=React.forwardRef(({result},ref)=>{const{archetype,profile,traits,potentialSavings}=result;const ascii=ARCHETYPE_ASCII[archetype.key]||ARCHETYPE_ASCII.balanced_realist;const topCat=profile.categories[0]?.name||'Lifestyle';return(<div ref={ref} style={{width:'320px',background:'#050505',borderRadius:'12px',padding:'24px',position:'relative',overflow:'hidden',border:'1px solid '+archetype.color+'30'}}><div style={{position:'absolute',inset:0,background:'radial-gradient(circle at 50% 20%,'+archetype.color+'10 0%,transparent 50%)',pointerEvents:'none'}}/><div style={{position:'relative',zIndex:1}}><pre className="mono" style={{fontSize:'10px',lineHeight:'12px',color:archetype.color,textAlign:'center',marginBottom:'16px',whiteSpace:'pre'}}>{ascii.split('\\n').join('\n')}</pre><div style={{textAlign:'center',marginBottom:'16px'}}><span style={{fontSize:'2rem',display:'block',marginBottom:'4px'}}>{archetype.emoji}</span><h2 className="mono" style={{fontSize:'0.85rem',fontWeight:700,color:'#fff',marginBottom:'4px'}}>{archetype.name}</h2><p style={{fontSize:'0.65rem',color:archetype.color,fontStyle:'italic'}}>"{archetype.vibe}"</p></div>{traits.length>0&&(<div style={{display:'flex',flexWrap:'wrap',justifyContent:'center',gap:'4px',marginBottom:'16px'}}>{traits.slice(0,3).map((t,i)=>(<span key={i} style={{fontSize:'0.6rem',padding:'2px 8px',background:'rgba(255,255,255,0.05)',borderRadius:'10px',color:'var(--dim)'}}>{t.emoji} {t.text}</span>))}</div>)}<div style={{background:'rgba(255,255,255,0.02)',border:'1px solid rgba(255,255,255,0.04)',borderRadius:'8px',padding:'14px',marginBottom:'14px'}}><div style={{display:'flex',justifyContent:'space-between',marginBottom:'8px'}}><span className="mono" style={{fontSize:'0.6rem',color:'var(--dim)'}}>Subscriptions</span><span className="mono" style={{fontSize:'0.6rem',color:'#fff'}}>{profile.metrics.subscriptionCount} (£{profile.monthly.subscriptions}/mo)</span></div>{profile.metrics.debtAccountCount>0&&(<div style={{display:'flex',justifyContent:'space-between',marginBottom:'8px'}}><span className="mono" style={{fontSize:'0.6rem',color:'var(--dim)'}}>Debt Payments</span><span className="mono" style={{fontSize:'0.6rem',color:'var(--coral)'}}>{profile.metrics.debtAccountCount} (£{profile.monthly.debtPayments}/mo)</span></div>)}<div style={{display:'flex',justifyContent:'space-between'}}><span className="mono" style={{fontSize:'0.6rem',color:'var(--dim)'}}>Top Category</span><span className="mono" style={{fontSize:'0.6rem',color:'#fff'}}>{topCat}</span></div><div style={{textAlign:'center',paddingTop:'12px',marginTop:'12px',borderTop:'1px solid rgba(255,255,255,0.04)'}}><p className="mono" style={{fontSize:'0.5rem',color:'#444',marginBottom:'4px'}}>POTENTIAL SAVINGS</p><p className="mono" style={{fontSize:'1.6rem',fontWeight:700,color:archetype.color}}>£{potentialSavings.toLocaleString()}</p><p className="mono" style={{fontSize:'0.45rem',color:'#333'}}>per year</p></div></div><div style={{display:'flex',justifyContent:'space-between',alignItems:'center',borderTop:'1px solid rgba(255,255,255,0.04)',paddingTop:'12px'}}><span className="mono" style={{fontSize:'0.8rem',fontWeight:700,color:'#fff'}}>BOCY</span><span className="mono" style={{fontSize:'0.45rem',color:'#444'}}>bocy.io/personality</span></div></div></div>)});
+const ResultCard=React.forwardRef(({result},ref)=>{const{archetype,profile,traits,potentialSavings}=result;const savingsTotal=potentialSavings.total;const ascii=ARCHETYPE_ASCII[archetype.key]||ARCHETYPE_ASCII.balanced_realist;const topCat=profile.categories[0]?.name||'Lifestyle';return(<div ref={ref} style={{width:'320px',background:'#050505',borderRadius:'12px',padding:'24px',position:'relative',overflow:'hidden',border:'1px solid '+archetype.color+'30'}}><div style={{position:'absolute',inset:0,background:'radial-gradient(circle at 50% 20%,'+archetype.color+'10 0%,transparent 50%)',pointerEvents:'none'}}/><div style={{position:'relative',zIndex:1}}><pre className="mono" style={{fontSize:'10px',lineHeight:'12px',color:archetype.color,textAlign:'center',marginBottom:'16px',whiteSpace:'pre'}}>{ascii.split('\\n').join('\n')}</pre><div style={{textAlign:'center',marginBottom:'16px'}}><span style={{fontSize:'2rem',display:'block',marginBottom:'4px'}}>{archetype.emoji}</span><h2 className="mono" style={{fontSize:'0.85rem',fontWeight:700,color:'#fff',marginBottom:'4px'}}>{archetype.name}</h2><p style={{fontSize:'0.65rem',color:archetype.color,fontStyle:'italic'}}>"{archetype.vibe}"</p></div>{traits.length>0&&(<div style={{display:'flex',flexWrap:'wrap',justifyContent:'center',gap:'4px',marginBottom:'16px'}}>{traits.slice(0,3).map((t,i)=>(<span key={i} style={{fontSize:'0.6rem',padding:'2px 8px',background:'rgba(255,255,255,0.05)',borderRadius:'10px',color:'var(--dim)'}}>{t.emoji} {t.text}</span>))}</div>)}<div style={{background:'rgba(255,255,255,0.02)',border:'1px solid rgba(255,255,255,0.04)',borderRadius:'8px',padding:'14px',marginBottom:'14px'}}><div style={{display:'flex',justifyContent:'space-between',marginBottom:'8px'}}><span className="mono" style={{fontSize:'0.6rem',color:'var(--dim)'}}>Subscriptions</span><span className="mono" style={{fontSize:'0.6rem',color:'#fff'}}>{profile.metrics.subscriptionCount} (£{profile.monthly.subscriptions}/mo)</span></div>{profile.metrics.debtAccountCount>0&&(<div style={{display:'flex',justifyContent:'space-between',marginBottom:'8px'}}><span className="mono" style={{fontSize:'0.6rem',color:'var(--dim)'}}>Debt Payments</span><span className="mono" style={{fontSize:'0.6rem',color:'var(--coral)'}}>{profile.metrics.debtAccountCount} (£{profile.monthly.debtPayments}/mo)</span></div>)}<div style={{display:'flex',justifyContent:'space-between'}}><span className="mono" style={{fontSize:'0.6rem',color:'var(--dim)'}}>Top Category</span><span className="mono" style={{fontSize:'0.6rem',color:'#fff'}}>{topCat}</span></div><div style={{textAlign:'center',paddingTop:'12px',marginTop:'12px',borderTop:'1px solid rgba(255,255,255,0.04)'}}><p className="mono" style={{fontSize:'0.5rem',color:'#444',marginBottom:'4px'}}>POTENTIAL SAVINGS</p><p className="mono" style={{fontSize:'1.6rem',fontWeight:700,color:archetype.color}}>£{savingsTotal.toLocaleString()}</p><p className="mono" style={{fontSize:'0.45rem',color:'#333'}}>per year</p></div></div><div style={{display:'flex',justifyContent:'space-between',alignItems:'center',borderTop:'1px solid rgba(255,255,255,0.04)',paddingTop:'12px'}}><span className="mono" style={{fontSize:'0.8rem',fontWeight:700,color:'#fff'}}>BOCY</span><span className="mono" style={{fontSize:'0.45rem',color:'#444'}}>bocy.io/personality</span></div></div></div>)});
 
 // RESULT
 const Result=({result})=>{const cardRef=useRef();const[downloading,setDownloading]=useState(false);const[email,setEmail]=useState('');const[emailStatus,setEmailStatus]=useState('idle');const{archetype,profile,traits,strengths,blindSpots,peerComparison,insights,potentialSavings}=result;
 const downloadCard=async()=>{if(!cardRef.current)return;setDownloading(true);try{const canvas=await html2canvas(cardRef.current,{backgroundColor:'#050505',scale:3});const link=document.createElement('a');link.download='my-money-personality.png';link.href=canvas.toDataURL('image/png');link.click()}catch(e){console.error(e)}setDownloading(false)};
-const shareTwitter=()=>{const t='I am "'+archetype.name+'" '+archetype.emoji+'\n\n"'+archetype.vibe+'"\n\nApparently I could be saving £'+potentialSavings+'/year\n\nFind yours:';window.open('https://twitter.com/intent/tweet?text='+encodeURIComponent(t)+'&url='+encodeURIComponent('https://bocy.io/personality'),'_blank')};
-const submitEmail=async e=>{e.preventDefault();if(!email||emailStatus==='sending')return;setEmailStatus('sending');try{await fetch(CONFIG.googleScript,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,archetype:archetype.name,potentialSavings,savingsRate:profile.metrics.savingsRate,subscriptionCount:profile.metrics.subscriptionCount,debtAccountCount:profile.metrics.debtAccountCount,traits:traits.map(t=>t.text).join(', '),timestamp:new Date().toISOString()})});setEmailStatus('done')}catch{setEmailStatus('done')}};
+const shareTwitter=()=>{const t='I am "'+archetype.name+'" '+archetype.emoji+'\n\n"'+archetype.vibe+'"\n\nApparently I could be saving £'+potentialSavings.total+'/year\n\nFind yours:';window.open('https://twitter.com/intent/tweet?text='+encodeURIComponent(t)+'&url='+encodeURIComponent('https://bocy.io/personality'),'_blank')};
+const submitEmail=async e=>{e.preventDefault();if(!email||emailStatus==='sending')return;setEmailStatus('sending');try{await fetch(CONFIG.googleScript,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,archetype:archetype.name,potentialSavings:potentialSavings.total,savingsRate:profile.metrics.savingsRate,subscriptionCount:profile.metrics.subscriptionCount,debtAccountCount:profile.metrics.debtAccountCount,traits:traits.map(t=>t.text).join(', '),timestamp:new Date().toISOString()})});setEmailStatus('done')}catch{setEmailStatus('done')}};
 
 return(<div style={{minHeight:'100vh',padding:'5rem 1rem 3rem',position:'relative',zIndex:1}}><div style={{maxWidth:'500px',margin:'0 auto'}}>
 <div className="fade-in" style={{display:'flex',justifyContent:'center',marginBottom:'1.5rem'}}><ResultCard ref={cardRef} result={result}/></div>
@@ -590,7 +644,7 @@ return(<div style={{minHeight:'100vh',padding:'5rem 1rem 3rem',position:'relativ
 
 <div className="card-box slide-up"><div className="section-title">Your Money Personality</div><div style={{display:'flex',alignItems:'center',gap:'0.75rem',marginBottom:'0.75rem'}}><span style={{fontSize:'2rem'}}>{archetype.emoji}</span><h2 style={{fontSize:'1.2rem',fontWeight:600,color:archetype.color}}>{archetype.name}</h2></div><p style={{color:'var(--text2)',fontSize:'0.9rem',lineHeight:1.7}}>{archetype.description}</p></div>
 
-<div className="card-box slide-up"><div className="section-title">What Your Money Says About You</div><p style={{color:'var(--text2)',fontSize:'0.9rem',lineHeight:1.7}}>{archetype.moneyStory}</p></div>
+<div className="card-box slide-up"><div className="section-title">What Your Money Says About You</div><p style={{color:'var(--text2)',fontSize:'0.9rem',lineHeight:1.7}}>{archetype.genMoneyStory?archetype.genMoneyStory(profile):''}</p></div>
 
 {traits.length>0&&(<div className="card-box slide-up"><div className="section-title">Your Traits</div><div style={{display:'flex',flexWrap:'wrap',gap:'0.4rem'}}>{traits.map((t,i)=>(<span key={i} className="trait-tag">{t.emoji} {t.text}</span>))}</div></div>)}
 
@@ -601,6 +655,8 @@ return(<div style={{minHeight:'100vh',padding:'5rem 1rem 3rem',position:'relativ
 <div className="card-box slide-up"><div className="section-title">How You Compare (UK Average)</div><div style={{display:'flex',flexDirection:'column',gap:'0.75rem'}}>{peerComparison.map((p,i)=>(<div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><span style={{color:'var(--text2)',fontSize:'0.85rem'}}>{p.label}</span><div style={{display:'flex',alignItems:'center',gap:'0.5rem'}}><span className="mono" style={{color:'#fff',fontSize:'0.9rem',fontWeight:600}}>{p.value}{p.unit==='£/mo'?'':p.unit}</span>{p.unit==='£/mo'&&<span style={{color:'var(--dim)',fontSize:'0.75rem'}}>£/mo</span>}{p.diff!==0&&(<span className="mono" style={{fontSize:'0.7rem',color:p.higherIsGood?(p.isHigher?'var(--mint)':'var(--coral)'):(p.isHigher?'var(--coral)':'var(--mint)'),padding:'0.15rem 0.4rem',background:p.higherIsGood?(p.isHigher?'rgba(114,232,176,0.1)':'rgba(232,114,114,0.1)'):(p.isHigher?'rgba(232,114,114,0.1)':'rgba(114,232,176,0.1)'),borderRadius:'4px'}}>{p.diff>0?'+':''}{p.diff}%</span>)}</div></div>))}</div></div>
 
 {insights.length>0&&(<div className="card-box slide-up"><div className="section-title">Your Personalised Insights</div><div style={{display:'flex',flexDirection:'column',gap:'0.75rem'}}>{insights.map((ins,i)=>(<p key={i} style={{color:'var(--text2)',fontSize:'0.85rem',lineHeight:1.7,padding:'0.6rem',background:ins.type==='debt'?'rgba(232,114,114,0.05)':'rgba(232,200,114,0.05)',borderRadius:'6px',borderLeft:ins.type==='debt'?'3px solid var(--coral)':'3px solid var(--accent)'}}>{ins.text}</p>))}</div></div>)}
+
+{potentialSavings.items.length>0&&(<div className="card-box slide-up" style={{border:'1px solid rgba(114,232,176,0.15)'}}><div className="section-title" style={{color:'var(--mint)'}}>Potential Savings Breakdown</div><div style={{textAlign:'center',marginBottom:'1.25rem',paddingBottom:'1rem',borderBottom:'1px solid var(--border)'}}><p className="mono" style={{fontSize:'0.6rem',color:'var(--dim)',marginBottom:'0.3rem',letterSpacing:'0.1em'}}>TOTAL POTENTIAL SAVINGS</p><p className="mono" style={{fontSize:'2rem',fontWeight:700,color:'var(--mint)'}}>£{potentialSavings.total.toLocaleString()}</p><p style={{fontSize:'0.75rem',color:'var(--dim)'}}>per year</p></div><div style={{display:'flex',flexDirection:'column',gap:'0.9rem'}}>{potentialSavings.items.map((item,i)=>(<div key={i}><div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:'0.2rem'}}><span style={{color:'var(--text2)',fontSize:'0.85rem',flex:1,paddingRight:'1rem'}}>{item.label}</span><span className="mono" style={{color:'var(--mint)',fontSize:'0.9rem',fontWeight:600,whiteSpace:'nowrap'}}>£{item.amount.toLocaleString()}</span></div><p className="mono" style={{fontSize:'0.65rem',color:'var(--muted)'}}>{item.detail}</p></div>))}</div></div>)}
 
 {emailStatus!=='done'?(<div className="slide-up" style={{background:'linear-gradient(135deg,rgba(232,200,114,0.08) 0%,rgba(178,114,232,0.08) 100%)',border:'1px solid rgba(232,200,114,0.2)',borderRadius:'10px',padding:'1.5rem',marginTop:'1.5rem'}}><div className="section-title" style={{color:'var(--accent)'}}>🔒 Unlock Your Action Plan</div><p style={{color:'#fff',fontSize:'0.95rem',fontWeight:500,marginBottom:'0.75rem'}}>BOCY will automatically:</p><div style={{display:'flex',flexDirection:'column',gap:'0.5rem',marginBottom:'1.25rem'}}><div style={{display:'flex',alignItems:'center',gap:'0.5rem'}}><span style={{color:'var(--accent)'}}>→</span><span style={{color:'var(--text2)',fontSize:'0.85rem'}}>Analyse your finances in real-time to surface immediate optimisation opportunities</span></div><div style={{display:'flex',alignItems:'center',gap:'0.5rem'}}><span style={{color:'var(--accent)'}}>→</span><span style={{color:'var(--text2)',fontSize:'0.85rem'}}>Provides clear, instant recommendations with exact financial impacts</span></div><div style={{display:'flex',alignItems:'center',gap:'0.5rem'}}><span style={{color:'var(--accent)'}}>→</span><span style={{color:'var(--text2)',fontSize:'0.85rem'}}>Execute only when you approve(One tap)</span></div></div><form onSubmit={submitEmail} style={{display:'flex',gap:'0.5rem'}}><input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="your@email.com" required style={{flex:1,padding:'0.75rem 1rem',background:'rgba(0,0,0,0.3)',border:'1px solid var(--border)',borderRadius:'6px',color:'#fff',fontSize:'0.85rem',outline:'none'}}/><button type="submit" disabled={emailStatus==='sending'} className="mono" style={{padding:'0.75rem 1.25rem',background:'var(--accent)',color:'var(--bg)',border:'none',borderRadius:'6px',fontSize:'0.75rem',fontWeight:700,cursor:'pointer'}}>{emailStatus==='sending'?'...':'JOIN'}</button></form></div>):(<div className="slide-up" style={{background:'rgba(114,232,176,0.08)',border:'1px solid rgba(114,232,176,0.2)',borderRadius:'10px',padding:'1.5rem',marginTop:'1.5rem',textAlign:'center'}}><span style={{fontSize:'2rem',display:'block',marginBottom:'0.5rem'}}>✓</span><p style={{color:'var(--mint)',fontSize:'1rem',fontWeight:600,marginBottom:'0.5rem'}}>You are on the list!</p><p style={{color:'var(--dim)',fontSize:'0.85rem',marginBottom:'1rem'}}>We will notify you when BOCY launches.</p><a href={CONFIG.landingPage} className="mono" style={{display:'inline-block',padding:'0.8rem 1.5rem',background:'var(--accent)',color:'var(--bg)',borderRadius:'6px',fontSize:'0.75rem',fontWeight:700,textDecoration:'none'}}>[ LEARN MORE ABOUT BOCY ]</a></div>)}
 
