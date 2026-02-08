@@ -38,7 +38,7 @@
 const {useState,useEffect,useRef}=React;
 const CONFIG={googleScript:'https://script.google.com/macros/s/AKfycbxwOJ7DwZo4z3jiW25aH6nu5cC3qkIQs-GIizz0-xyeaoxe5Hdxg1TK3jxl_K1yJpIFRg/exec',landingPage:'https://www.bocy.io'};
 const CLAUDE_CONFIG={apiKey:(typeof localStorage!=='undefined'&&localStorage.getItem('bocy_claude_key'))||'',model:'claude-haiku-4-5-20251001',apiVersion:'2023-06-01'};
-const TRUELAYER_CONFIG={clientId:'bocymoneypersonality-a01ae4',authBaseUrl:'https://auth.truelayer.com',scope:'info accounts balance transactions cards',providers:'uk-ob-all uk-oauth-all'};
+const TRUELAYER_CONFIG={clientId:'bocymoneypersonality-a01ae4',authBaseUrl:'https://auth.truelayer.com',scope:'info accounts balance transactions cards',providers:'uk-ob-all uk-oauth-all',redirectUri:window.location.origin+'/'};
 const UK_BENCHMARKS={subscriptions:{count:5,monthly:52},foodDelivery:68,savingsRate:11};
 
 // PDF.js worker setup
@@ -490,11 +490,11 @@ const removeFile=i=>setFiles(p=>p.filter((_,idx)=>idx!==i));
 const getFileIcon=name=>name.toLowerCase().endsWith('.pdf')?'📑':'📄';
 
 // TrueLayer bank connection
-const connectBank=()=>{const redirectUri=encodeURIComponent(window.location.origin+window.location.pathname);const scope=encodeURIComponent(TRUELAYER_CONFIG.scope);const providers=encodeURIComponent(TRUELAYER_CONFIG.providers);window.location.href=TRUELAYER_CONFIG.authBaseUrl+'/?response_type=code&client_id='+TRUELAYER_CONFIG.clientId+'&scope='+scope+'&redirect_uri='+redirectUri+'&providers='+providers};
+const connectBank=()=>{const redirectUri=encodeURIComponent(TRUELAYER_CONFIG.redirectUri);const scope=encodeURIComponent(TRUELAYER_CONFIG.scope);const providers=encodeURIComponent(TRUELAYER_CONFIG.providers);window.location.href=TRUELAYER_CONFIG.authBaseUrl+'/?response_type=code&client_id='+TRUELAYER_CONFIG.clientId+'&scope='+scope+'&redirect_uri='+redirectUri+'&providers='+providers};
 
 // Handle TrueLayer callback code
 const handleTrueLayerCode=async(code)=>{setStatus('parsing');setStatusMsg('Connecting to your bank...');setErr('');try{
-const redirectUri=window.location.origin+window.location.pathname;
+const redirectUri=TRUELAYER_CONFIG.redirectUri;
 const resp=await fetch('/api/truelayer/callback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code,redirect_uri:redirectUri})});
 if(!resp.ok){const d=await resp.json().catch(()=>({}));throw new Error(d.error||'Connection failed')}
 const data=await resp.json();
