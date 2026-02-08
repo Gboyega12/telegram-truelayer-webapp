@@ -49,7 +49,7 @@ module.exports = async function handler(req, res) {
 
     const allTransactions = [];
     const from = new Date();
-    from.setDate(from.getDate() - 90);
+    from.setFullYear(from.getFullYear() - 1);
     const fromStr = from.toISOString();
     const toStr = new Date().toISOString();
 
