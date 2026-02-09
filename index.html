@@ -38,7 +38,7 @@
 const {useState,useEffect,useRef}=React;
 const CONFIG={googleScript:'https://script.google.com/macros/s/AKfycbxwOJ7DwZo4z3jiW25aH6nu5cC3qkIQs-GIizz0-xyeaoxe5Hdxg1TK3jxl_K1yJpIFRg/exec',landingPage:'https://www.bocy.io'};
 const CLAUDE_CONFIG={endpoint:'/api/claude/enrich'};
-const TRUELAYER_CONFIG={clientId:'bocymoneypersonality-a01ae4',authBaseUrl:'https://auth.truelayer.com',scope:'info accounts balance transactions cards',providers:'uk-ob-all uk-oauth-all',redirectUri:window.location.origin+'/'};
+const TRUELAYER_CONFIG={clientId:'bocymoneypersonality-a01ae4',authBaseUrl:'https://auth.truelayer.com',scope:'info accounts balance transactions cards',providers:'uk-ob-all uk-oauth-all',redirectUri:window.location.origin};
 const UK_BENCHMARKS={subscriptions:{count:5,monthly:52},foodDelivery:68,savingsRate:11};
 
 // PDF.js worker setup
@@ -384,9 +384,9 @@ allTx.sort((a,b)=>(a.date||0)-(b.date||0));
 onStatus?.('Identifying merchants...');
 let enriched=allTx.map(tx=>this.enrichTransaction(tx));
 
-// Step 3: AI verification — send ALL transactions to Claude for confirmation/correction
-onStatus?.('AI verification — this takes a moment...');
-enriched=await this.verifyWithClaude(enriched,onStatus);
+// Step 3: Categorise uncertain transactions with Claude
+const uncertain=enriched.filter(tx=>tx.confidence==='low'&&!tx.isIncome&&!tx.isTransfer);
+if(uncertain.length>0){onStatus?.('Categorising data...');enriched=await this.verifyWithClaude(enriched,onStatus)}
 
 // Step 4: Build profile
 onStatus?.('Building your profile...');
@@ -410,49 +410,42 @@ const result=await callClaude(prompt,4096);
 return result;
 }
 
-// AI verification: send ALL spending transactions to Claude in batches for confirmation/correction
+// Send low-confidence transactions to Claude for categorisation (parallel batches)
 async verifyWithClaude(enrichedTxs,onStatus){
-const toVerify=enrichedTxs.filter(tx=>!tx.isIncome&&!tx.isTransfer&&Math.abs(tx.amount)>0);
+const toVerify=enrichedTxs.filter(tx=>tx.confidence==='low'&&!tx.isIncome&&!tx.isTransfer&&Math.abs(tx.amount)>0);
 if(toVerify.length===0)return enrichedTxs;
 
 const BATCH_SIZE=40;
 const batches=[];
 for(let i=0;i<toVerify.length;i+=BATCH_SIZE)batches.push(toVerify.slice(i,i+BATCH_SIZE));
 
-for(let b=0;b<batches.length;b++){
-const batch=batches[b];
-onStatus?.('AI verification'+(batches.length>1?' ('+( b+1)+'/'+batches.length+')':'')+'...');
-const txList=batch.map((tx,i)=>`${i+1}. "${tx.description}" £${Math.abs(tx.amount).toFixed(2)} [local: ${tx.category}, ${tx.merchant}]`).join('\n');
-const prompt=`You are a UK bank transaction categoriser. Review and correct these transactions. Each shows the raw description, amount, and the local engine's guess in [brackets].
+onStatus?.('Categorising '+toVerify.length+' transactions...');
 
-RULES:
-- Fix incorrect categories. The local engine often misidentifies open banking descriptions like "CARD PAYMENT TO TESCO STORES 2816" or "DELIVEROO.COM *1234".
-- "Groceries" = supermarkets (Tesco, Sainsburys, ASDA, Aldi, Lidl, Morrisons, Waitrose, Ocado, Iceland, M&S, Co-op)
-- "Food Delivery" = delivery apps (Deliveroo, Uber Eats, Just Eat) and meal kits (Gousto, HelloFresh)
-- "Eating Out" = restaurants, cafes, coffee shops, pubs, fast food (Starbucks, Costa, Pret, Nandos, McDonalds, Greggs, Wetherspoons, KFC)
-- "Subscriptions" = recurring digital services (Netflix, Spotify, gym memberships, software). isSubscription must be true.
-- "Debt Payments" = credit card payments (Amex, Barclaycard, MBNA), BNPL (Klarna, Clearpay, Afterpay)
-- "Bills" = utilities, rent, mortgage, phone, broadband, council tax, insurance
-- "Transport" = TfL, Uber (rides not food), Bolt, trains
-- "Shopping" = retail (Amazon, ASOS, Zara, IKEA, H&M, Primark, eBay)
-- "Entertainment" = cinema, gaming, events, tickets
-- "Health" = pharmacy, dentist, optician
-- If the local guess looks correct, still include it in your response.
+const processBatch=async(batch)=>{
+const txList=batch.map((tx,i)=>`${i+1}. "${tx.description}" £${Math.abs(tx.amount).toFixed(2)}`).join('\n');
+const prompt=`You are a UK bank transaction categoriser. Categorise these transactions from their raw bank descriptions.
 
-Return a JSON array. Each object:
-- "index": transaction number (1-based)
-- "merchant": clean merchant name (e.g. "Tesco" not "TESCO STORES 2816")
-- "category": one of the categories above
-- "isSubscription": boolean
+CATEGORIES:
+- Groceries: supermarkets (Tesco, Sainsburys, ASDA, Aldi, Lidl, Morrisons, Waitrose, Ocado, M&S, Co-op)
+- Food Delivery: delivery apps (Deliveroo, Uber Eats, Just Eat) and meal kits (Gousto, HelloFresh)
+- Eating Out: restaurants, cafes, coffee shops, pubs, fast food
+- Subscriptions: recurring digital services (Netflix, Spotify, gym, software). isSubscription=true
+- Debt Payments: credit cards (Amex, Barclaycard), BNPL (Klarna, Clearpay)
+- Bills: utilities, rent, mortgage, phone, broadband, council tax, insurance
+- Transport: TfL, Uber rides, Bolt, trains
+- Shopping: retail (Amazon, ASOS, Zara, IKEA, H&M, eBay)
+- Entertainment: cinema, gaming, events, tickets
+- Health: pharmacy, dentist, optician
+- Other: if none fit
 
+Return a JSON array. Each object: {"index":N,"merchant":"Clean Name","category":"Category","isSubscription":false}
 Return ONLY the JSON array.
 
 Transactions:
 ${txList}`;
-
 try{
 const result=await callClaude(prompt,4000);
-if(!result)continue;
+if(!result)return;
 const jsonMatch=result.match(/\[[\s\S]*\]/);
 if(jsonMatch){
 const cats=JSON.parse(jsonMatch[0]);
@@ -463,14 +456,17 @@ if(cat.merchant)batch[idx].merchant=cat.merchant;
 if(cat.category)batch[idx].category=cat.category;
 if(typeof cat.isSubscription==='boolean')batch[idx].isSubscription=cat.isSubscription;
 batch[idx].isDebt=cat.category==='Debt Payments';
-const isIncomeCat=cat.category==='Income';
-batch[idx].isIncome=isIncomeCat;
+batch[idx].isIncome=cat.category==='Income';
 batch[idx].isTransfer=cat.category==='Transfers';
+batch[idx].confidence='high';
 }
 });
 }
-}catch(e){/* Silently fall back to local results for this batch */}
-}
+}catch(e){/* Fall back to local results for this batch */}
+};
+
+// Run all batches in parallel
+await Promise.all(batches.map(b=>processBatch(b)));
 return enrichedTxs;
 }
 
@@ -520,17 +516,17 @@ norm(d){return d.toLowerCase().replace(/[^\w\s]/g,' ').replace(/\d{4,}/g,'').rep
 
 enrichTransaction(tx){
 const n=tx.descNorm;
-let lookup=null;
+let lookup=null;let confidence='low';
 // Sort patterns by length descending so "uber eats" matches before "uber", "amazon prime video" before "amazon"
 if(!this._sortedPatterns)this._sortedPatterns=Object.entries(MERCHANT_DB).sort((a,b)=>b[0].length-a[0].length);
-for(const[pattern,data]of this._sortedPatterns){if(n.includes(pattern)){lookup=data;break}}
+for(const[pattern,data]of this._sortedPatterns){if(n.includes(pattern)){lookup=data;confidence='high';break}}
 if(!lookup){
 const words=n.split(' ').filter(w=>w.length>2);
 lookup={name:words.slice(0,2).map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(' ')||'Unknown',category:'Other',isSubscription:false};
 }
 const isIncomeCategory=lookup.category==='Income';
 const isLargeCredit=tx.amount>1000&&lookup.category==='Other';
-return{...tx,merchant:lookup.name,category:isLargeCredit?'Income':lookup.category,subcategory:lookup.subcategory||'',isSubscription:lookup.isSubscription,isIncome:isIncomeCategory||isLargeCredit,isTransfer:lookup.category==='Transfers',isDebt:lookup.category==='Debt Payments'};
+return{...tx,merchant:lookup.name,category:isLargeCredit?'Income':lookup.category,subcategory:lookup.subcategory||'',isSubscription:lookup.isSubscription,isIncome:isIncomeCategory||isLargeCredit,isTransfer:lookup.category==='Transfers',isDebt:lookup.category==='Debt Payments',confidence};
 }
 
 detectRecurring(txs){
@@ -720,7 +716,7 @@ if(status==='parsing')return(<div style={{minHeight:'100vh',display:'flex',flexD
     ·  •  ·`}</pre>
 <p style={{fontSize:'1rem',color:'var(--text2)',fontWeight:500,marginBottom:'0.6rem'}}>{statusMsg||'Analysing your transactions...'}</p>
 <p style={{fontSize:'0.75rem',color:'var(--muted)',marginBottom:'1.5rem'}}>This may take a moment</p>
-<div style={{display:'flex',flexDirection:'column',gap:'0.4rem',alignItems:'center'}}>{['Parsing transactions','Identifying merchants','AI verification','Building profile'].map((step,i)=>{const active=statusMsg?.toLowerCase().includes(step.split(' ')[0].toLowerCase());const done=statusMsg&&['Parsing','Identifying','AI verification','Building'].findIndex(s=>statusMsg.includes(s))>i;return(<div key={i} style={{display:'flex',alignItems:'center',gap:'0.5rem'}}><span style={{color:done?'var(--mint)':active?'var(--accent)':'var(--muted)',fontSize:'0.7rem'}}>{done?'✓':active?'●':'○'}</span><span className="mono" style={{fontSize:'0.65rem',color:done?'var(--dim)':active?'var(--text2)':'var(--muted)'}}>{step}</span></div>)})}</div>
+<div style={{display:'flex',flexDirection:'column',gap:'0.4rem',alignItems:'center'}}>{['Parsing transactions','Identifying merchants','Categorising data','Building profile'].map((step,i)=>{const active=statusMsg?.toLowerCase().includes(step.split(' ')[0].toLowerCase());const done=statusMsg&&['Parsing','Identifying','Categoris','Building'].findIndex(s=>statusMsg.includes(s))>i;return(<div key={i} style={{display:'flex',alignItems:'center',gap:'0.5rem'}}><span style={{color:done?'var(--mint)':active?'var(--accent)':'var(--muted)',fontSize:'0.7rem'}}>{done?'✓':active?'●':'○'}</span><span className="mono" style={{fontSize:'0.65rem',color:done?'var(--dim)':active?'var(--text2)':'var(--muted)'}}>{step}</span></div>)})}</div>
 </div>);
 
 // Simplified screen when banks are already connected
