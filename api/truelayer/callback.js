@@ -100,15 +100,18 @@ module.exports = async function handler(req, res) {
     }
 
     // Step 5: Convert TrueLayer transactions to CSV for the enrichment engine
+    // Include both description and merchant_name for better enrichment accuracy
     const csvLines = ['Date,Description,Amount'];
     allTransactions.forEach((tx) => {
       const date = tx.timestamp
         ? new Date(tx.timestamp).toLocaleDateString('en-GB')
         : '';
-      const desc = (tx.description || tx.merchant_name || 'Unknown').replace(
-        /,/g,
-        ' '
-      );
+      const rawDesc = (tx.description || '').replace(/,/g, ' ');
+      const merchant = (tx.merchant_name || '').replace(/,/g, ' ');
+      // Combine: prefer merchant_name if available, append raw description for context
+      const desc = merchant && merchant !== rawDesc
+        ? merchant + ' ' + rawDesc
+        : rawDesc || merchant || 'Unknown';
       const amount =
         tx.transaction_type === 'DEBIT'
           ? -Math.abs(tx.amount)
