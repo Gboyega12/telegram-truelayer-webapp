@@ -717,6 +717,9 @@ return(<div style={{minHeight:'100vh',display:'flex',flexDirection:'column',alig
 <div style={{display:'flex',justifyContent:'center',gap:'0.6rem',flexWrap:'wrap'}}><span style={{fontSize:'0.65rem',color:'var(--muted)'}}>TrueLayer (FCA regulated)</span><span style={{fontSize:'0.65rem',color:'var(--border)'}}>·</span><span style={{fontSize:'0.65rem',color:'var(--muted)'}}>Read-only access</span><span style={{fontSize:'0.65rem',color:'var(--border)'}}>·</span><span style={{fontSize:'0.65rem',color:'var(--muted)'}}>No data stored</span></div>
 </div>
 
+{err&&<div style={{padding:'0.75rem 1rem',background:'rgba(232,114,114,0.06)',border:'1px solid rgba(232,114,114,0.12)',borderRadius:'8px',marginTop:'1.25rem',textAlign:'center'}}><p style={{color:'var(--coral)',fontSize:'0.8rem'}}>{err}</p></div>}
+
+{bankCSV?(<button onClick={analyse} className="mono" style={{width:'100%',padding:'1rem',background:'var(--accent)',color:'var(--bg)',border:'none',borderRadius:'8px',fontSize:'0.78rem',fontWeight:700,cursor:'pointer',marginTop:'1.5rem'}}>[ ANALYSE BANK DATA ]</button>):(<>
 <div style={{display:'flex',alignItems:'center',gap:'1rem',margin:'1.75rem 0'}}><div style={{flex:1,height:'1px',background:'var(--border)'}}/><span className="mono" style={{fontSize:'0.6rem',color:'var(--muted)',letterSpacing:'0.1em'}}>OR</span><div style={{flex:1,height:'1px',background:'var(--border)'}}/></div>
 
 <div style={{marginBottom:'1.5rem'}}>
@@ -733,10 +736,8 @@ return(<div style={{minHeight:'100vh',display:'flex',flexDirection:'column',alig
 
 {files.length>0&&(<div style={{marginBottom:'1.25rem'}}><p className="mono" style={{fontSize:'0.65rem',color:'var(--dim)',marginBottom:'0.5rem'}}>{files.length} file{files.length>1?'s':''} selected</p><div style={{display:'flex',flexWrap:'wrap',gap:'0.3rem'}}>{files.map((f,i)=>(<span key={i} className="file-chip">{getFileIcon(f.name)} {f.name.length>25?f.name.substring(0,22)+'...':f.name}<button onClick={()=>removeFile(i)}>×</button></span>))}</div></div>)}
 
-{err&&<div style={{padding:'0.75rem 1rem',background:'rgba(232,114,114,0.06)',border:'1px solid rgba(232,114,114,0.12)',borderRadius:'8px',marginBottom:'1.25rem',textAlign:'center'}}><p style={{color:'var(--coral)',fontSize:'0.8rem'}}>{err}</p></div>}
-
-<button onClick={analyse} disabled={!files.length&&!bankCSV} className="mono" style={{width:'100%',padding:'1rem',background:(files.length||bankCSV)?'var(--accent)':'transparent',color:(files.length||bankCSV)?'var(--bg)':'var(--muted)',border:(files.length||bankCSV)?'none':'1px solid var(--border)',borderRadius:'8px',fontSize:'0.78rem',fontWeight:700,cursor:(files.length||bankCSV)?'pointer':'not-allowed'}}>[ ANALYSE {bankCSV?'BANK DATA':files.length?files.length+' FILE'+(files.length>1?'S':''):''} ]</button>
-</div>
+<button onClick={analyse} disabled={!files.length} className="mono" style={{width:'100%',padding:'1rem',background:files.length?'var(--accent)':'transparent',color:files.length?'var(--bg)':'var(--muted)',border:files.length?'none':'1px solid var(--border)',borderRadius:'8px',fontSize:'0.78rem',fontWeight:700,cursor:files.length?'pointer':'not-allowed'}}>[ ANALYSE {files.length?files.length+' FILE'+(files.length>1?'S':''):''} ]</button>
+</div></>)}
 
 <button onClick={onBack} style={{display:'block',width:'100%',background:'none',border:'none',color:'var(--muted)',fontSize:'0.8rem',cursor:'pointer',padding:'1rem 0',marginTop:'0.5rem'}}>← back</button>
 
