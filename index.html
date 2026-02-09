@@ -10,6 +10,10 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+        window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
+    </script>
+    <script defer src="/_vercel/insights/script.js"></script>
     <style>
         :root{--bg:#0a0a0a;--surface:#111;--border:rgba(255,255,255,0.06);--text:#fff;--text2:#ccc;--dim:#888;--muted:#555;--accent:#E8C872;--coral:#E87272;--mint:#72E8B0;--lavender:#B272E8;--sky:#72B0E8}
         *{margin:0;padding:0;box-sizing:border-box}
@@ -420,7 +424,7 @@ const batches=[];
 for(let i=0;i<toVerify.length;i+=BATCH_SIZE)batches.push(toVerify.slice(i,i+BATCH_SIZE));
 onStatus?.('Categorising '+toVerify.length+' transactions...');
 
-const processBatch=async(batch)=>{
+const processBatch=async(batch,retries=2)=>{
 const txList=batch.map((tx,i)=>`${i+1}. "${tx.description}" £${Math.abs(tx.amount).toFixed(2)}`).join('\n');
 const prompt=`Categorise these UK bank transactions. Return JSON array only.
 Each object: {"index":N,"merchant":"Name","category":"Cat","isSubscription":false}
@@ -428,9 +432,10 @@ Categories: Groceries, Food Delivery, Eating Out, Subscriptions (isSubscription=
 Groceries=supermarkets. Food Delivery=Deliveroo/UberEats/JustEat. Eating Out=restaurants/cafes/pubs.
 Transactions:
 ${txList}`;
+for(let attempt=0;attempt<=retries;attempt++){
 try{
 const result=await callClaude(prompt,4000);
-if(!result)return;
+if(!result){if(attempt<retries){await new Promise(r=>setTimeout(r,1000*(attempt+1)));continue}return}
 const jsonMatch=result.match(/\[[\s\S]*\]/);
 if(jsonMatch){
 const cats=JSON.parse(jsonMatch[0]);
@@ -445,11 +450,21 @@ batch[idx].isIncome=cat.category==='Income';
 batch[idx].isTransfer=cat.category==='Transfers';
 }
 });
+return;
 }
-}catch(e){/* Fall back to local results for this batch */}
+}catch(e){if(attempt<retries){await new Promise(r=>setTimeout(r,1000*(attempt+1)));continue}}
+}
 };
 
-await Promise.all(batches.map(b=>processBatch(b)));
+// Process in groups of 3 with retry to avoid rate limits
+const CONCURRENCY=3;
+for(let g=0;g<batches.length;g+=CONCURRENCY){
+const group=batches.slice(g,g+CONCURRENCY);
+await Promise.all(group.map(async b=>{
+await processBatch(b);
+}));
+onStatus?.('Categorised '+(Math.min(g+CONCURRENCY,batches.length)*BATCH_SIZE)+' of '+toVerify.length+'...');
+}
 return enrichedTxs;
 }
 
@@ -717,6 +732,9 @@ return(<div style={{minHeight:'100vh',display:'flex',flexDirection:'column',alig
 <div style={{display:'flex',justifyContent:'center',gap:'0.6rem',flexWrap:'wrap'}}><span style={{fontSize:'0.65rem',color:'var(--muted)'}}>TrueLayer (FCA regulated)</span><span style={{fontSize:'0.65rem',color:'var(--border)'}}>·</span><span style={{fontSize:'0.65rem',color:'var(--muted)'}}>Read-only access</span><span style={{fontSize:'0.65rem',color:'var(--border)'}}>·</span><span style={{fontSize:'0.65rem',color:'var(--muted)'}}>No data stored</span></div>
 </div>
 
+{err&&<div style={{padding:'0.75rem 1rem',background:'rgba(232,114,114,0.06)',border:'1px solid rgba(232,114,114,0.12)',borderRadius:'8px',marginTop:'1.25rem',textAlign:'center'}}><p style={{color:'var(--coral)',fontSize:'0.8rem'}}>{err}</p></div>}
+
+{bankCSV?(<button onClick={analyse} className="mono" style={{width:'100%',padding:'1rem',background:'var(--accent)',color:'var(--bg)',border:'none',borderRadius:'8px',fontSize:'0.78rem',fontWeight:700,cursor:'pointer',marginTop:'1.5rem'}}>[ ANALYSE BANK DATA ]</button>):(<>
 <div style={{display:'flex',alignItems:'center',gap:'1rem',margin:'1.75rem 0'}}><div style={{flex:1,height:'1px',background:'var(--border)'}}/><span className="mono" style={{fontSize:'0.6rem',color:'var(--muted)',letterSpacing:'0.1em'}}>OR</span><div style={{flex:1,height:'1px',background:'var(--border)'}}/></div>
 
 <div style={{marginBottom:'1.5rem'}}>
@@ -733,10 +751,8 @@ return(<div style={{minHeight:'100vh',display:'flex',flexDirection:'column',alig
 
 {files.length>0&&(<div style={{marginBottom:'1.25rem'}}><p className="mono" style={{fontSize:'0.65rem',color:'var(--dim)',marginBottom:'0.5rem'}}>{files.length} file{files.length>1?'s':''} selected</p><div style={{display:'flex',flexWrap:'wrap',gap:'0.3rem'}}>{files.map((f,i)=>(<span key={i} className="file-chip">{getFileIcon(f.name)} {f.name.length>25?f.name.substring(0,22)+'...':f.name}<button onClick={()=>removeFile(i)}>×</button></span>))}</div></div>)}
 
-{err&&<div style={{padding:'0.75rem 1rem',background:'rgba(232,114,114,0.06)',border:'1px solid rgba(232,114,114,0.12)',borderRadius:'8px',marginBottom:'1.25rem',textAlign:'center'}}><p style={{color:'var(--coral)',fontSize:'0.8rem'}}>{err}</p></div>}
-
-<button onClick={analyse} disabled={!files.length&&!bankCSV} className="mono" style={{width:'100%',padding:'1rem',background:(files.length||bankCSV)?'var(--accent)':'transparent',color:(files.length||bankCSV)?'var(--bg)':'var(--muted)',border:(files.length||bankCSV)?'none':'1px solid var(--border)',borderRadius:'8px',fontSize:'0.78rem',fontWeight:700,cursor:(files.length||bankCSV)?'pointer':'not-allowed'}}>[ ANALYSE {bankCSV?'BANK DATA':files.length?files.length+' FILE'+(files.length>1?'S':''):''} ]</button>
-</div>
+<button onClick={analyse} disabled={!files.length} className="mono" style={{width:'100%',padding:'1rem',background:files.length?'var(--accent)':'transparent',color:files.length?'var(--bg)':'var(--muted)',border:files.length?'none':'1px solid var(--border)',borderRadius:'8px',fontSize:'0.78rem',fontWeight:700,cursor:files.length?'pointer':'not-allowed'}}>[ ANALYSE {files.length?files.length+' FILE'+(files.length>1?'S':''):''} ]</button>
+</div></>)}
 
 <button onClick={onBack} style={{display:'block',width:'100%',background:'none',border:'none',color:'var(--muted)',fontSize:'0.8rem',cursor:'pointer',padding:'1rem 0',marginTop:'0.5rem'}}>← back</button>
 
@@ -752,10 +768,10 @@ const maxSpend=Math.max(...potentialSavings.items.map(i=>i.yearlySpend),1);
 return(<div className="card-box slide-up" style={{border:'1px solid rgba(114,232,176,0.15)'}}><div className="section-title" style={{color:'var(--mint)'}}>Where Your Money Goes</div><div style={{textAlign:'center',marginBottom:'1.5rem',paddingBottom:'1.25rem',borderBottom:'1px solid var(--border)'}}><p className="mono" style={{fontSize:'2rem',fontWeight:700,color:'var(--mint)'}}>£{potentialSavings.total.toLocaleString()}</p><p style={{fontSize:'0.8rem',color:'var(--dim)'}}>potential savings per year</p><p style={{fontSize:'0.7rem',color:'var(--muted)',marginTop:'0.3rem'}}>by making small changes across these categories</p></div><div style={{display:'flex',flexDirection:'column',gap:'1rem'}}>{potentialSavings.items.map((item,i)=>(<div key={i}><div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:'0.35rem'}}><span style={{color:'#fff',fontSize:'0.92rem',fontWeight:500}}>{item.category}</span><span className="mono" style={{color:'var(--text2)',fontSize:'0.88rem',fontWeight:600}}>£{item.monthlySpend}<span style={{color:'var(--muted)',fontWeight:400,fontSize:'0.7rem'}}>/mo</span></span></div><div style={{height:'6px',background:'rgba(255,255,255,0.04)',borderRadius:'3px',marginBottom:'0.4rem',overflow:'hidden'}}><div style={{height:'100%',width:Math.round((item.yearlySpend/maxSpend)*100)+'%',background:'linear-gradient(90deg,rgba(114,232,176,0.3),rgba(114,232,176,0.15))',borderRadius:'3px'}}/></div><div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><span style={{color:'var(--muted)',fontSize:'0.75rem'}}>{item.tip}</span><span className="mono" style={{color:'var(--mint)',fontSize:'0.78rem',fontWeight:600}}>save £{item.savingAmount.toLocaleString()}/yr</span></div></div>))}</div></div>)};
 
 // RESULT
-const Result=({result})=>{const cardRef=useRef();const[downloading,setDownloading]=useState(false);const[email,setEmail]=useState('');const[emailStatus,setEmailStatus]=useState('idle');const{archetype,profile,traits,strengths,blindSpots,peerComparison,insights,potentialSavings}=result;
+const Result=({result})=>{const cardRef=useRef();const[downloading,setDownloading]=useState(false);const[email,setEmail]=useState('');const[emailStatus,setEmailStatus]=useState('idle');const[unlocked,setUnlocked]=useState(false);const{archetype,profile,traits,strengths,blindSpots,peerComparison,insights,potentialSavings}=result;
 const downloadCard=async()=>{if(!cardRef.current)return;setDownloading(true);try{const canvas=await html2canvas(cardRef.current,{backgroundColor:'#050505',scale:3});const link=document.createElement('a');link.download='my-money-personality.png';link.href=canvas.toDataURL('image/png');link.click()}catch(e){console.error(e)}setDownloading(false)};
 const shareTwitter=()=>{const t='I am "'+archetype.name+'" '+archetype.emoji+'\n\n"'+archetype.vibe+'"\n\nApparently I could be saving £'+potentialSavings.total+'/year\n\nFind yours:';window.open('https://twitter.com/intent/tweet?text='+encodeURIComponent(t)+'&url='+encodeURIComponent('https://bocy.io/personality'),'_blank')};
-const submitEmail=async e=>{e.preventDefault();if(!email||emailStatus==='sending')return;setEmailStatus('sending');try{await fetch(CONFIG.googleScript,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,archetype:archetype.name,potentialSavings:potentialSavings.total,savingsRate:profile.metrics.savingsRate,subscriptionCount:profile.metrics.subscriptionCount,debtAccountCount:profile.metrics.debtAccountCount,traits:traits.map(t=>t.text).join(', '),timestamp:new Date().toISOString()})});setEmailStatus('done')}catch{setEmailStatus('done')}};
+const submitEmail=async e=>{e.preventDefault();if(!email||emailStatus==='sending')return;setEmailStatus('sending');try{await fetch(CONFIG.googleScript,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,archetype:archetype.name,potentialSavings:potentialSavings.total,savingsRate:profile.metrics.savingsRate,subscriptionCount:profile.metrics.subscriptionCount,debtAccountCount:profile.metrics.debtAccountCount,traits:traits.map(t=>t.text).join(', '),timestamp:new Date().toISOString()})});setEmailStatus('done');setUnlocked(true)}catch{setEmailStatus('done');setUnlocked(true)}};
 
 return(<div style={{minHeight:'100vh',padding:'5rem 1rem 3rem',position:'relative',zIndex:1}}><div style={{maxWidth:'500px',margin:'0 auto'}}>
 <div className="fade-in" style={{display:'flex',justifyContent:'center',marginBottom:'1.5rem'}}><ResultCard ref={cardRef} result={result}/></div>
@@ -769,19 +785,36 @@ return(<div style={{minHeight:'100vh',padding:'5rem 1rem 3rem',position:'relativ
 
 <div className="card-box slide-up"><div className="section-title">Your Strengths</div><div style={{display:'flex',flexDirection:'column',gap:'0.6rem'}}>{strengths.length>0?strengths.map((s,i)=>(<div key={i} style={{display:'flex',alignItems:'center',gap:'0.6rem'}}><span style={{color:'var(--mint)',fontSize:'0.9rem'}}>✦</span><span style={{color:'var(--text2)',fontSize:'0.9rem'}}>{s}</span></div>)):<p style={{color:'var(--dim)',fontSize:'0.85rem'}}>Upload more transactions for detailed analysis</p>}</div></div>
 
-<div className="card-box slide-up"><div className="section-title">Your Blind Spots</div><div style={{display:'flex',flexDirection:'column',gap:'0.75rem'}}>{blindSpots.length>0?blindSpots.map((b,i)=>(<div key={i}><div style={{display:'flex',alignItems:'center',gap:'0.6rem',marginBottom:'0.2rem'}}><span style={{color:'var(--coral)',fontSize:'0.9rem'}}>⚠</span><span style={{color:'#fff',fontSize:'0.9rem',fontWeight:500}}>{b.text}</span></div><p style={{color:'var(--dim)',fontSize:'0.8rem',marginLeft:'1.5rem'}}>{b.detail}</p></div>)):<p style={{color:'var(--dim)',fontSize:'0.85rem'}}>No major blind spots detected</p>}</div></div>
-
 <div className="card-box slide-up"><div className="section-title">How You Compare (UK Average)</div><div style={{display:'flex',flexDirection:'column',gap:'0.75rem'}}>{peerComparison.map((p,i)=>(<div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><span style={{color:'var(--text2)',fontSize:'0.85rem'}}>{p.label}</span><div style={{display:'flex',alignItems:'center',gap:'0.5rem'}}><span className="mono" style={{color:'#fff',fontSize:'0.9rem',fontWeight:600}}>{p.value}{p.unit==='£/mo'?'':p.unit}</span>{p.unit==='£/mo'&&<span style={{color:'var(--dim)',fontSize:'0.75rem'}}>£/mo</span>}{p.diff!==0&&(<span className="mono" style={{fontSize:'0.7rem',color:p.higherIsGood?(p.isHigher?'var(--mint)':'var(--coral)'):(p.isHigher?'var(--coral)':'var(--mint)'),padding:'0.15rem 0.4rem',background:p.higherIsGood?(p.isHigher?'rgba(114,232,176,0.1)':'rgba(232,114,114,0.1)'):(p.isHigher?'rgba(232,114,114,0.1)':'rgba(114,232,176,0.1)'),borderRadius:'4px'}}>{p.diff>0?'+':''}{p.diff}%</span>)}</div></div>))}</div></div>
 
 {profile.spendingTrend&&(<div className="card-box slide-up"><div className="section-title">Spending Trend</div><div style={{display:'flex',alignItems:'center',gap:'0.75rem',marginBottom:'0.75rem'}}><span style={{fontSize:'1.5rem'}}>{profile.spendingTrend.direction==='up'?'📈':profile.spendingTrend.direction==='down'?'📉':'➡️'}</span><div><p style={{color:'#fff',fontSize:'0.95rem',fontWeight:500}}>Last 30 days: £{profile.spendingTrend.recentMonthTotal}</p><p style={{color:'var(--dim)',fontSize:'0.8rem'}}>vs £{profile.spendingTrend.averageMonthly}/mo average ({profile.spendingTrend.pctChange>0?'+':''}{profile.spendingTrend.pctChange}%)</p></div></div>{profile.spendingTrend.topRecentCategories.length>0&&(<div style={{display:'flex',gap:'0.4rem',flexWrap:'wrap'}}>{profile.spendingTrend.topRecentCategories.map((c,i)=>(<span key={i} className="trait-tag" style={{background:'rgba(114,176,232,0.08)',borderColor:'rgba(114,176,232,0.15)',color:'var(--sky)'}}>{c.name} £{c.total}</span>))}</div>)}</div>)}
+
+{!unlocked&&(<div className="slide-up" style={{position:'relative',marginTop:'0.5rem'}}>
+<div style={{filter:'blur(6px)',pointerEvents:'none',userSelect:'none',opacity:0.5}}>
+<div className="card-box"><div className="section-title">Your Blind Spots</div><div style={{display:'flex',flexDirection:'column',gap:'0.75rem'}}>{blindSpots.length>0?blindSpots.slice(0,2).map((b,i)=>(<div key={i}><div style={{display:'flex',alignItems:'center',gap:'0.6rem',marginBottom:'0.2rem'}}><span style={{color:'var(--coral)',fontSize:'0.9rem'}}>⚠</span><span style={{color:'#fff',fontSize:'0.9rem',fontWeight:500}}>{b.text}</span></div><p style={{color:'var(--dim)',fontSize:'0.8rem',marginLeft:'1.5rem'}}>{b.detail}</p></div>)):<p style={{color:'var(--dim)',fontSize:'0.85rem'}}>Analysis available after unlock</p>}</div></div>
+{insights.length>0&&(<div className="card-box"><div className="section-title">Your Personalised Insights</div><div style={{display:'flex',flexDirection:'column',gap:'0.5rem'}}>{insights.slice(0,2).map((ins,i)=>(<p key={i} style={{color:'var(--text2)',fontSize:'0.85rem',lineHeight:1.7,padding:'0.6rem',background:'rgba(232,200,114,0.05)',borderRadius:'6px',borderLeft:'3px solid var(--accent)'}}>{ins.text}</p>))}</div></div>)}
+{potentialSavings.items.length>0&&(<div className="card-box"><div className="section-title" style={{color:'var(--mint)'}}>Where Your Money Goes</div><div style={{textAlign:'center',marginBottom:'1rem'}}><p className="mono" style={{fontSize:'2rem',fontWeight:700,color:'var(--mint)'}}>£{potentialSavings.total.toLocaleString()}</p><p style={{fontSize:'0.8rem',color:'var(--dim)'}}>potential savings per year</p></div></div>)}
+</div>
+<div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',zIndex:2}}>
+<div style={{background:'linear-gradient(135deg,rgba(232,200,114,0.12) 0%,rgba(178,114,232,0.12) 100%)',border:'1px solid rgba(232,200,114,0.25)',borderRadius:'14px',padding:'2rem 1.75rem',maxWidth:'360px',width:'90%',textAlign:'center',backdropFilter:'blur(4px)'}}>
+<p className="mono" style={{fontSize:'0.55rem',letterSpacing:'0.15em',color:'var(--accent)',marginBottom:'1rem',textTransform:'uppercase'}}>Full results locked</p>
+<h3 style={{fontSize:'1.15rem',fontWeight:600,color:'#fff',marginBottom:'0.6rem'}}>Unlock your full money profile</h3>
+<p style={{color:'var(--dim)',fontSize:'0.82rem',lineHeight:1.7,marginBottom:'1.25rem'}}>Join the waitlist to see your blind spots, personalised savings tips, and detailed spending breakdown.</p>
+<form onSubmit={submitEmail} style={{display:'flex',gap:'0.5rem'}}><input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="your@email.com" required style={{flex:1,padding:'0.75rem 1rem',background:'rgba(0,0,0,0.5)',border:'1px solid var(--border)',borderRadius:'6px',color:'#fff',fontSize:'0.85rem',outline:'none'}}/><button type="submit" disabled={emailStatus==='sending'} className="mono" style={{padding:'0.75rem 1.25rem',background:'var(--accent)',color:'var(--bg)',border:'none',borderRadius:'6px',fontSize:'0.75rem',fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}}>{emailStatus==='sending'?'...':'UNLOCK'}</button></form>
+<p style={{color:'var(--muted)',fontSize:'0.7rem',marginTop:'0.75rem'}}>Free forever. No spam. Unsubscribe anytime.</p>
+</div></div></div>)}
+
+{unlocked&&(<>
+<div className="card-box slide-up"><div className="section-title">Your Blind Spots</div><div style={{display:'flex',flexDirection:'column',gap:'0.75rem'}}>{blindSpots.length>0?blindSpots.map((b,i)=>(<div key={i}><div style={{display:'flex',alignItems:'center',gap:'0.6rem',marginBottom:'0.2rem'}}><span style={{color:'var(--coral)',fontSize:'0.9rem'}}>⚠</span><span style={{color:'#fff',fontSize:'0.9rem',fontWeight:500}}>{b.text}</span></div><p style={{color:'var(--dim)',fontSize:'0.8rem',marginLeft:'1.5rem'}}>{b.detail}</p></div>)):<p style={{color:'var(--dim)',fontSize:'0.85rem'}}>No major blind spots detected</p>}</div></div>
 
 {insights.length>0&&(<div className="card-box slide-up"><div className="section-title">Your Personalised Insights</div><div style={{display:'flex',flexDirection:'column',gap:'0.75rem'}}>{insights.map((ins,i)=>(<p key={i} style={{color:'var(--text2)',fontSize:'0.85rem',lineHeight:1.7,padding:'0.6rem',background:ins.type==='debt'?'rgba(232,114,114,0.05)':ins.type==='trend'?'rgba(114,176,232,0.05)':'rgba(232,200,114,0.05)',borderRadius:'6px',borderLeft:ins.type==='debt'?'3px solid var(--coral)':ins.type==='trend'?'3px solid var(--sky)':'3px solid var(--accent)'}}>{ins.text}</p>))}</div></div>)}
 
 {potentialSavings.items.length>0&&(<SavingsBreakdown potentialSavings={potentialSavings}/>)}
 
-{emailStatus!=='done'?(<div className="slide-up" style={{background:'linear-gradient(135deg,rgba(232,200,114,0.08) 0%,rgba(178,114,232,0.08) 100%)',border:'1px solid rgba(232,200,114,0.2)',borderRadius:'10px',padding:'1.5rem',marginTop:'1.5rem'}}><div className="section-title" style={{color:'var(--accent)'}}>🔒 Unlock Your Action Plan</div><p style={{color:'#fff',fontSize:'0.95rem',fontWeight:500,marginBottom:'0.75rem'}}>BOCY will automatically:</p><div style={{display:'flex',flexDirection:'column',gap:'0.5rem',marginBottom:'1.25rem'}}><div style={{display:'flex',alignItems:'center',gap:'0.5rem'}}><span style={{color:'var(--accent)'}}>→</span><span style={{color:'var(--text2)',fontSize:'0.85rem'}}>Analyse your finances in real-time to surface immediate optimisation opportunities</span></div><div style={{display:'flex',alignItems:'center',gap:'0.5rem'}}><span style={{color:'var(--accent)'}}>→</span><span style={{color:'var(--text2)',fontSize:'0.85rem'}}>Provides clear, instant recommendations with exact financial impacts</span></div><div style={{display:'flex',alignItems:'center',gap:'0.5rem'}}><span style={{color:'var(--accent)'}}>→</span><span style={{color:'var(--text2)',fontSize:'0.85rem'}}>Execute only when you approve(One tap)</span></div></div><form onSubmit={submitEmail} style={{display:'flex',gap:'0.5rem'}}><input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="your@email.com" required style={{flex:1,padding:'0.75rem 1rem',background:'rgba(0,0,0,0.3)',border:'1px solid var(--border)',borderRadius:'6px',color:'#fff',fontSize:'0.85rem',outline:'none'}}/><button type="submit" disabled={emailStatus==='sending'} className="mono" style={{padding:'0.75rem 1.25rem',background:'var(--accent)',color:'var(--bg)',border:'none',borderRadius:'6px',fontSize:'0.75rem',fontWeight:700,cursor:'pointer'}}>{emailStatus==='sending'?'...':'JOIN'}</button></form></div>):(<div className="slide-up" style={{background:'rgba(114,232,176,0.08)',border:'1px solid rgba(114,232,176,0.2)',borderRadius:'10px',padding:'1.5rem',marginTop:'1.5rem',textAlign:'center'}}><span style={{fontSize:'2rem',display:'block',marginBottom:'0.5rem'}}>✓</span><p style={{color:'var(--mint)',fontSize:'1rem',fontWeight:600,marginBottom:'0.5rem'}}>You are on the list!</p><p style={{color:'var(--dim)',fontSize:'0.85rem',marginBottom:'1rem'}}>We will notify you when BOCY launches.</p><a href={CONFIG.landingPage} className="mono" style={{display:'inline-block',padding:'0.8rem 1.5rem',background:'var(--accent)',color:'var(--bg)',borderRadius:'6px',fontSize:'0.75rem',fontWeight:700,textDecoration:'none'}}>[ LEARN MORE ABOUT BOCY ]</a></div>)}
+<div className="slide-up" style={{background:'rgba(114,232,176,0.08)',border:'1px solid rgba(114,232,176,0.2)',borderRadius:'10px',padding:'1.5rem',marginTop:'0.5rem',textAlign:'center'}}><p style={{color:'var(--mint)',fontSize:'1rem',fontWeight:600,marginBottom:'0.5rem'}}>You're on the list!</p><p style={{color:'var(--dim)',fontSize:'0.85rem',marginBottom:'1rem'}}>We'll notify you when BOCY launches.</p><a href={CONFIG.landingPage} className="mono" style={{display:'inline-block',padding:'0.8rem 1.5rem',background:'var(--accent)',color:'var(--bg)',borderRadius:'6px',fontSize:'0.75rem',fontWeight:700,textDecoration:'none'}}>[ LEARN MORE ABOUT BOCY ]</a></div>
+</>)}
 
-<div style={{textAlign:'center',marginTop:'2rem',paddingTop:'1.5rem',borderTop:'1px solid var(--border)'}}><p style={{color:'var(--dim)',fontSize:'0.8rem',marginBottom:'0.75rem'}}>Want to see the full picture?</p><a href={CONFIG.landingPage} style={{color:'var(--accent)',fontSize:'0.85rem',textDecoration:'none'}}>Learn more on bocy.io →</a></div>
+<div style={{textAlign:'center',marginTop:'2rem',paddingTop:'1.5rem',borderTop:'1px solid var(--border)'}}><a href={CONFIG.landingPage} style={{color:'var(--accent)',fontSize:'0.85rem',textDecoration:'none'}}>Learn more on bocy.io</a></div>
 </div></div>)};
 
 // APP
