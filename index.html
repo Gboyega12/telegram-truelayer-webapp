@@ -38,7 +38,7 @@
 const {useState,useEffect,useRef}=React;
 const CONFIG={googleScript:'https://script.google.com/macros/s/AKfycbxwOJ7DwZo4z3jiW25aH6nu5cC3qkIQs-GIizz0-xyeaoxe5Hdxg1TK3jxl_K1yJpIFRg/exec',landingPage:'https://www.bocy.io'};
 const CLAUDE_CONFIG={endpoint:'/api/claude/enrich'};
-const TRUELAYER_CONFIG={clientId:'bocymoneypersonality-a01ae4',authBaseUrl:'https://auth.truelayer.com',scope:'info accounts balance transactions cards',providers:'uk-ob-all uk-oauth-all',redirectUri:window.location.origin};
+const TRUELAYER_CONFIG={clientId:'bocymoneypersonality-a01ae4',authBaseUrl:'https://auth.truelayer.com',scope:'info accounts balance transactions cards',providers:'uk-ob-all uk-oauth-all',redirectUri:window.location.origin+'/'};
 const UK_BENCHMARKS={subscriptions:{count:5,monthly:52},foodDelivery:68,savingsRate:11};
 
 // PDF.js worker setup
@@ -384,9 +384,9 @@ allTx.sort((a,b)=>(a.date||0)-(b.date||0));
 onStatus?.('Identifying merchants...');
 let enriched=allTx.map(tx=>this.enrichTransaction(tx));
 
-// Step 3: Categorise uncertain transactions with Claude
-const uncertain=enriched.filter(tx=>tx.confidence==='low'&&!tx.isIncome&&!tx.isTransfer);
-if(uncertain.length>0){onStatus?.('Categorising data...');enriched=await this.verifyWithClaude(enriched,onStatus)}
+// Step 3: Send all transactions to Claude for categorisation
+onStatus?.('Categorising data...');
+enriched=await this.verifyWithClaude(enriched,onStatus);
 
 // Step 4: Build profile
 onStatus?.('Building your profile...');
@@ -410,37 +410,22 @@ const result=await callClaude(prompt,4096);
 return result;
 }
 
-// Send low-confidence transactions to Claude for categorisation (parallel batches)
+// Send all spending transactions to Claude in parallel batches for categorisation
 async verifyWithClaude(enrichedTxs,onStatus){
-const toVerify=enrichedTxs.filter(tx=>tx.confidence==='low'&&!tx.isIncome&&!tx.isTransfer&&Math.abs(tx.amount)>0);
+const toVerify=enrichedTxs.filter(tx=>!tx.isIncome&&!tx.isTransfer&&Math.abs(tx.amount)>0);
 if(toVerify.length===0)return enrichedTxs;
 
-const BATCH_SIZE=40;
+const BATCH_SIZE=50;
 const batches=[];
 for(let i=0;i<toVerify.length;i+=BATCH_SIZE)batches.push(toVerify.slice(i,i+BATCH_SIZE));
-
 onStatus?.('Categorising '+toVerify.length+' transactions...');
 
 const processBatch=async(batch)=>{
 const txList=batch.map((tx,i)=>`${i+1}. "${tx.description}" £${Math.abs(tx.amount).toFixed(2)}`).join('\n');
-const prompt=`You are a UK bank transaction categoriser. Categorise these transactions from their raw bank descriptions.
-
-CATEGORIES:
-- Groceries: supermarkets (Tesco, Sainsburys, ASDA, Aldi, Lidl, Morrisons, Waitrose, Ocado, M&S, Co-op)
-- Food Delivery: delivery apps (Deliveroo, Uber Eats, Just Eat) and meal kits (Gousto, HelloFresh)
-- Eating Out: restaurants, cafes, coffee shops, pubs, fast food
-- Subscriptions: recurring digital services (Netflix, Spotify, gym, software). isSubscription=true
-- Debt Payments: credit cards (Amex, Barclaycard), BNPL (Klarna, Clearpay)
-- Bills: utilities, rent, mortgage, phone, broadband, council tax, insurance
-- Transport: TfL, Uber rides, Bolt, trains
-- Shopping: retail (Amazon, ASOS, Zara, IKEA, H&M, eBay)
-- Entertainment: cinema, gaming, events, tickets
-- Health: pharmacy, dentist, optician
-- Other: if none fit
-
-Return a JSON array. Each object: {"index":N,"merchant":"Clean Name","category":"Category","isSubscription":false}
-Return ONLY the JSON array.
-
+const prompt=`Categorise these UK bank transactions. Return JSON array only.
+Each object: {"index":N,"merchant":"Name","category":"Cat","isSubscription":false}
+Categories: Groceries, Food Delivery, Eating Out, Subscriptions (isSubscription=true), Debt Payments, Bills, Transport, Shopping, Entertainment, Health, Other
+Groceries=supermarkets. Food Delivery=Deliveroo/UberEats/JustEat. Eating Out=restaurants/cafes/pubs.
 Transactions:
 ${txList}`;
 try{
@@ -458,14 +443,12 @@ if(typeof cat.isSubscription==='boolean')batch[idx].isSubscription=cat.isSubscri
 batch[idx].isDebt=cat.category==='Debt Payments';
 batch[idx].isIncome=cat.category==='Income';
 batch[idx].isTransfer=cat.category==='Transfers';
-batch[idx].confidence='high';
 }
 });
 }
 }catch(e){/* Fall back to local results for this batch */}
 };
 
-// Run all batches in parallel
 await Promise.all(batches.map(b=>processBatch(b)));
 return enrichedTxs;
 }
@@ -676,27 +659,22 @@ const Landing=({onStart})=>(<div style={{minHeight:'100vh',display:'flex',flexDi
 </div></div>);
 
 // UPLOAD
-const Upload=({onDone,onBack,tlCode,onTlCodeUsed,bankCSVs,setBankCSVs,bankNames,setBankNames})=>{const[files,setFiles]=useState([]);const[status,setStatus]=useState('idle');const[statusMsg,setStatusMsg]=useState('');const[err,setErr]=useState('');const ref=useRef();
+const Upload=({onDone,onBack,tlCode,onTlCodeUsed})=>{const[files,setFiles]=useState([]);const[status,setStatus]=useState('idle');const[statusMsg,setStatusMsg]=useState('');const[err,setErr]=useState('');const ref=useRef();
+const[bankCSV,setBankCSV]=useState(null);const[bankName,setBankName]=useState('');
 const addFiles=newF=>{const valid=Array.from(newF).filter(f=>{const n=f.name.toLowerCase();return n.endsWith('.csv')||n.endsWith('.pdf')});if(!valid.length){setErr('Please upload CSV or PDF files');return}setFiles(p=>[...p,...valid]);setErr('')};
 const removeFile=i=>setFiles(p=>p.filter((_,idx)=>idx!==i));
 const getFileIcon=name=>name.toLowerCase().endsWith('.pdf')?'◉':'○';
-const connectBank=()=>{
-// Always persist current bank data before OAuth redirect
-sessionStorage.setItem('bocy_bank_csvs',JSON.stringify(bankCSVs));
-sessionStorage.setItem('bocy_bank_names',JSON.stringify(bankNames));
-const redirectUri=encodeURIComponent(TRUELAYER_CONFIG.redirectUri);const scope=encodeURIComponent(TRUELAYER_CONFIG.scope);const providers=encodeURIComponent(TRUELAYER_CONFIG.providers);window.location.href=TRUELAYER_CONFIG.authBaseUrl+'/?response_type=code&client_id='+TRUELAYER_CONFIG.clientId+'&scope='+scope+'&redirect_uri='+redirectUri+'&providers='+providers};
+const connectBank=()=>{const redirectUri=encodeURIComponent(TRUELAYER_CONFIG.redirectUri);const scope=encodeURIComponent(TRUELAYER_CONFIG.scope);const providers=encodeURIComponent(TRUELAYER_CONFIG.providers);window.location.href=TRUELAYER_CONFIG.authBaseUrl+'/?response_type=code&client_id='+TRUELAYER_CONFIG.clientId+'&scope='+scope+'&redirect_uri='+redirectUri+'&providers='+providers};
 const handleTrueLayerCode=async(code)=>{setStatus('parsing');setStatusMsg('Connecting to your bank...');setErr('');try{
 const redirectUri=TRUELAYER_CONFIG.redirectUri;
 const resp=await fetch('/api/truelayer/callback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code,redirect_uri:redirectUri})});
 if(!resp.ok){const d=await resp.json().catch(()=>({}));throw new Error(d.error||'Connection failed')}
 const data=await resp.json();
-if(!data.csv||data.transactionCount<1){setErr('No transactions found from this bank. Try a different one or upload a statement.');setStatus('idle');return}
-// Append to existing bank data (state is already restored by App on mount)
-const newBankName='Bank '+(bankNames.length+1)+' ('+data.transactionCount+' transactions)';
-setBankCSVs(prev=>[...prev,data.csv]);setBankNames(prev=>[...prev,newBankName]);
+if(!data.csv||data.transactionCount<1){setErr('No transactions found. Try uploading a statement instead.');setStatus('idle');return}
+setBankCSV(data.csv);setBankName(data.transactionCount+' transactions loaded');
 setStatus('idle');setStatusMsg('')}catch(e){console.error(e);setErr('Could not connect to your bank. Please try uploading a statement instead.');setStatus('idle')}};
 useEffect(()=>{if(tlCode){handleTrueLayerCode(tlCode);onTlCodeUsed?.()}},[tlCode]);
-const analyse=async()=>{const allTexts=[...bankCSVs];
+const analyse=async()=>{const allTexts=bankCSV?[bankCSV]:[];
 try{
 for(const f of files){
 if(f.name.toLowerCase().endsWith('.pdf')){
@@ -719,32 +697,6 @@ if(status==='parsing')return(<div style={{minHeight:'100vh',display:'flex',flexD
 <div style={{display:'flex',flexDirection:'column',gap:'0.4rem',alignItems:'center'}}>{['Parsing transactions','Identifying merchants','Categorising data','Building profile'].map((step,i)=>{const active=statusMsg?.toLowerCase().includes(step.split(' ')[0].toLowerCase());const done=statusMsg&&['Parsing','Identifying','Categoris','Building'].findIndex(s=>statusMsg.includes(s))>i;return(<div key={i} style={{display:'flex',alignItems:'center',gap:'0.5rem'}}><span style={{color:done?'var(--mint)':active?'var(--accent)':'var(--muted)',fontSize:'0.7rem'}}>{done?'✓':active?'●':'○'}</span><span className="mono" style={{fontSize:'0.65rem',color:done?'var(--dim)':active?'var(--text2)':'var(--muted)'}}>{step}</span></div>)})}</div>
 </div>);
 
-// Simplified screen when banks are already connected
-if(bankCSVs.length>0)return(<div style={{minHeight:'100vh',display:'flex',flexDirection:'column',alignItems:'center',padding:'5.5rem 1.25rem 3rem',position:'relative',zIndex:1}}><div className="slide-up" style={{maxWidth:'400px',width:'100%'}}>
-
-<div style={{textAlign:'center',marginBottom:'2.5rem'}}>
-<pre className="mono" style={{fontSize:'0.4rem',lineHeight:1.4,color:'var(--mint)',marginBottom:'1.5rem',opacity:0.6}}>{`   ·  •  ·
-  •  ✓  •
-   ·  •  ·`}</pre>
-<h2 style={{fontSize:'1.35rem',fontWeight:600,marginBottom:'0.75rem'}}>Your connected banks</h2>
-<p style={{color:'var(--dim)',fontSize:'0.85rem',lineHeight:1.7}}>Ready to analyse your transactions</p>
-</div>
-
-<div style={{marginBottom:'1.5rem'}}>{bankNames.map((name,i)=>(<div key={i} style={{display:'flex',alignItems:'center',gap:'0.6rem',padding:'0.75rem 1rem',background:'rgba(114,232,176,0.06)',border:'1px solid rgba(114,232,176,0.12)',borderRadius:'10px',marginBottom:'0.5rem'}}><span style={{color:'var(--mint)',fontSize:'1rem',fontWeight:600}}>✓</span><span style={{color:'var(--text2)',fontSize:'0.88rem'}}>{name}</span></div>))}</div>
-
-{err&&<div style={{padding:'0.75rem 1rem',background:'rgba(232,114,114,0.06)',border:'1px solid rgba(232,114,114,0.12)',borderRadius:'8px',marginBottom:'1.25rem',textAlign:'center'}}><p style={{color:'var(--coral)',fontSize:'0.8rem'}}>{err}</p></div>}
-
-<button onClick={analyse} className="mono" style={{width:'100%',padding:'1.1rem',background:'var(--accent)',color:'var(--bg)',border:'none',borderRadius:'8px',fontSize:'0.82rem',fontWeight:700,cursor:'pointer',letterSpacing:'0.03em',marginBottom:'0.75rem'}}>[ ANALYSE {bankCSVs.length} BANK{bankCSVs.length>1?'S':''} ]</button>
-
-<button onClick={connectBank} className="mono" style={{width:'100%',padding:'0.9rem',background:'transparent',color:'var(--mint)',border:'1px solid rgba(114,232,176,0.25)',borderRadius:'8px',fontSize:'0.75rem',fontWeight:700,cursor:'pointer',letterSpacing:'0.03em'}}>[ + ADD ANOTHER BANK ]</button>
-
-<div style={{display:'flex',justifyContent:'center',gap:'0.6rem',flexWrap:'wrap',marginTop:'1.5rem'}}><span style={{fontSize:'0.65rem',color:'var(--muted)'}}>TrueLayer (FCA regulated)</span><span style={{fontSize:'0.65rem',color:'var(--border)'}}>·</span><span style={{fontSize:'0.65rem',color:'var(--muted)'}}>No data stored</span></div>
-
-<button onClick={onBack} style={{display:'block',width:'100%',background:'none',border:'none',color:'var(--muted)',fontSize:'0.8rem',cursor:'pointer',padding:'1rem 0',marginTop:'0.5rem'}}>← back</button>
-
-</div></div>);
-
-// Default screen: no banks connected — show both options
 return(<div style={{minHeight:'100vh',display:'flex',flexDirection:'column',alignItems:'center',padding:'5.5rem 1.25rem 3rem',position:'relative',zIndex:1}}><div className="slide-up" style={{maxWidth:'400px',width:'100%'}}>
 
 <div style={{textAlign:'center',marginBottom:'2.5rem'}}>
@@ -760,7 +712,7 @@ return(<div style={{minHeight:'100vh',display:'flex',flexDirection:'column',alig
 <h3 style={{fontSize:'1.1rem',fontWeight:600,color:'#fff',marginBottom:'0.6rem'}}>Connect your bank</h3>
 <p style={{color:'var(--dim)',fontSize:'0.82rem',lineHeight:1.7,marginBottom:'1.25rem'}}>Securely link your account for the most accurate personality profile. Read-only access — we never see your login details.</p>
 
-<button onClick={connectBank} className="mono" style={{width:'100%',padding:'1rem',background:'var(--mint)',color:'var(--bg)',border:'none',borderRadius:'8px',fontSize:'0.78rem',fontWeight:700,cursor:'pointer',letterSpacing:'0.03em',marginBottom:'1.5rem'}}>[ CONNECT YOUR BANK ]</button>
+{bankCSV?(<div style={{display:'flex',alignItems:'center',gap:'0.6rem',padding:'0.75rem 1rem',background:'rgba(114,232,176,0.06)',border:'1px solid rgba(114,232,176,0.12)',borderRadius:'10px',marginBottom:'1rem'}}><span style={{color:'var(--mint)',fontSize:'1rem',fontWeight:600}}>✓</span><span style={{color:'var(--text2)',fontSize:'0.85rem'}}>{bankName}</span></div>):(<button onClick={connectBank} className="mono" style={{width:'100%',padding:'1rem',background:'var(--mint)',color:'var(--bg)',border:'none',borderRadius:'8px',fontSize:'0.78rem',fontWeight:700,cursor:'pointer',letterSpacing:'0.03em',marginBottom:'1.5rem'}}>[ CONNECT YOUR BANK ]</button>)}
 
 <div style={{display:'flex',justifyContent:'center',gap:'0.6rem',flexWrap:'wrap'}}><span style={{fontSize:'0.65rem',color:'var(--muted)'}}>TrueLayer (FCA regulated)</span><span style={{fontSize:'0.65rem',color:'var(--border)'}}>·</span><span style={{fontSize:'0.65rem',color:'var(--muted)'}}>Read-only access</span><span style={{fontSize:'0.65rem',color:'var(--border)'}}>·</span><span style={{fontSize:'0.65rem',color:'var(--muted)'}}>No data stored</span></div>
 </div>
@@ -783,7 +735,7 @@ return(<div style={{minHeight:'100vh',display:'flex',flexDirection:'column',alig
 
 {err&&<div style={{padding:'0.75rem 1rem',background:'rgba(232,114,114,0.06)',border:'1px solid rgba(232,114,114,0.12)',borderRadius:'8px',marginBottom:'1.25rem',textAlign:'center'}}><p style={{color:'var(--coral)',fontSize:'0.8rem'}}>{err}</p></div>}
 
-<button onClick={analyse} disabled={!files.length} className="mono" style={{width:'100%',padding:'1rem',background:files.length?'var(--accent)':'transparent',color:files.length?'var(--bg)':'var(--muted)',border:files.length?'none':'1px solid var(--border)',borderRadius:'8px',fontSize:'0.78rem',fontWeight:700,cursor:files.length?'pointer':'not-allowed'}}>[ ANALYSE {files.length?files.length+' FILE'+(files.length>1?'S':''):''} ]</button>
+<button onClick={analyse} disabled={!files.length&&!bankCSV} className="mono" style={{width:'100%',padding:'1rem',background:(files.length||bankCSV)?'var(--accent)':'transparent',color:(files.length||bankCSV)?'var(--bg)':'var(--muted)',border:(files.length||bankCSV)?'none':'1px solid var(--border)',borderRadius:'8px',fontSize:'0.78rem',fontWeight:700,cursor:(files.length||bankCSV)?'pointer':'not-allowed'}}>[ ANALYSE {bankCSV?'BANK DATA':files.length?files.length+' FILE'+(files.length>1?'S':''):''} ]</button>
 </div>
 
 <button onClick={onBack} style={{display:'block',width:'100%',background:'none',border:'none',color:'var(--muted)',fontSize:'0.8rem',cursor:'pointer',padding:'1rem 0',marginTop:'0.5rem'}}>← back</button>
@@ -834,15 +786,8 @@ return(<div style={{minHeight:'100vh',padding:'5rem 1rem 3rem',position:'relativ
 
 // APP
 const App=()=>{const[screen,setScreen]=useState('landing');const[result,setResult]=useState(null);const[tlCode,setTlCode]=useState(null);
-// Lift bank state to App so it survives OAuth redirect cycle
-const[bankCSVs,setBankCSVs]=useState([]);const[bankNames,setBankNames]=useState([]);
-useEffect(()=>{initBg();
-// Restore bank data from sessionStorage (persisted before OAuth redirect)
-const savedCSVs=JSON.parse(sessionStorage.getItem('bocy_bank_csvs')||'[]');
-const savedNames=JSON.parse(sessionStorage.getItem('bocy_bank_names')||'[]');
-if(savedCSVs.length>0){setBankCSVs(savedCSVs);setBankNames(savedNames);sessionStorage.removeItem('bocy_bank_csvs');sessionStorage.removeItem('bocy_bank_names')}
-const params=new URLSearchParams(window.location.search);const code=params.get('code');if(code){window.history.replaceState({},'',window.location.pathname);setTlCode(code);setScreen('upload')}},[]);
-const handleData=r=>{setResult(r);setScreen('result')};return(<><Nav/>{screen==='landing'&&<Landing onStart={()=>setScreen('upload')}/>}{screen==='upload'&&<Upload onDone={handleData} onBack={()=>setScreen('landing')} tlCode={tlCode} onTlCodeUsed={()=>setTlCode(null)} bankCSVs={bankCSVs} setBankCSVs={setBankCSVs} bankNames={bankNames} setBankNames={setBankNames}/>}{screen==='result'&&<Result result={result}/>}</>)};
+useEffect(()=>{initBg();const params=new URLSearchParams(window.location.search);const code=params.get('code');if(code){window.history.replaceState({},'',window.location.pathname);setTlCode(code);setScreen('upload')}},[]);
+const handleData=r=>{setResult(r);setScreen('result')};return(<><Nav/>{screen==='landing'&&<Landing onStart={()=>setScreen('upload')}/>}{screen==='upload'&&<Upload onDone={handleData} onBack={()=>setScreen('landing')} tlCode={tlCode} onTlCodeUsed={()=>setTlCode(null)}/>}{screen==='result'&&<Result result={result}/>}</>)};
 
 ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
