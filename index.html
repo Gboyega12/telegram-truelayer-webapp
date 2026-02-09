@@ -420,7 +420,7 @@ const batches=[];
 for(let i=0;i<toVerify.length;i+=BATCH_SIZE)batches.push(toVerify.slice(i,i+BATCH_SIZE));
 onStatus?.('Categorising '+toVerify.length+' transactions...');
 
-const processBatch=async(batch)=>{
+const processBatch=async(batch,retries=2)=>{
 const txList=batch.map((tx,i)=>`${i+1}. "${tx.description}" £${Math.abs(tx.amount).toFixed(2)}`).join('\n');
 const prompt=`Categorise these UK bank transactions. Return JSON array only.
 Each object: {"index":N,"merchant":"Name","category":"Cat","isSubscription":false}
@@ -428,9 +428,10 @@ Categories: Groceries, Food Delivery, Eating Out, Subscriptions (isSubscription=
 Groceries=supermarkets. Food Delivery=Deliveroo/UberEats/JustEat. Eating Out=restaurants/cafes/pubs.
 Transactions:
 ${txList}`;
+for(let attempt=0;attempt<=retries;attempt++){
 try{
 const result=await callClaude(prompt,4000);
-if(!result)return;
+if(!result){if(attempt<retries){await new Promise(r=>setTimeout(r,1000*(attempt+1)));continue}return}
 const jsonMatch=result.match(/\[[\s\S]*\]/);
 if(jsonMatch){
 const cats=JSON.parse(jsonMatch[0]);
@@ -445,11 +446,21 @@ batch[idx].isIncome=cat.category==='Income';
 batch[idx].isTransfer=cat.category==='Transfers';
 }
 });
+return;
 }
-}catch(e){/* Fall back to local results for this batch */}
+}catch(e){if(attempt<retries){await new Promise(r=>setTimeout(r,1000*(attempt+1)));continue}}
+}
 };
 
-await Promise.all(batches.map(b=>processBatch(b)));
+// Process in groups of 3 with retry to avoid rate limits
+const CONCURRENCY=3;
+for(let g=0;g<batches.length;g+=CONCURRENCY){
+const group=batches.slice(g,g+CONCURRENCY);
+await Promise.all(group.map(async b=>{
+await processBatch(b);
+}));
+onStatus?.('Categorised '+(Math.min(g+CONCURRENCY,batches.length)*BATCH_SIZE)+' of '+toVerify.length+'...');
+}
 return enrichedTxs;
 }
 
