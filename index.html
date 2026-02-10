@@ -105,6 +105,17 @@ const MERCHANT_DB={
 'skillshare':{name:'Skillshare',category:'Subscriptions',isSubscription:true},
 'masterclass':{name:'MasterClass',category:'Subscriptions',isSubscription:true},
 'duolingo':{name:'Duolingo',category:'Subscriptions',isSubscription:true},
+'paramount+':{name:'Paramount+',category:'Subscriptions',isSubscription:true},
+'paramount plus':{name:'Paramount+',category:'Subscriptions',isSubscription:true},
+'crunchyroll':{name:'Crunchyroll',category:'Subscriptions',isSubscription:true},
+'xbox game pass':{name:'Xbox Game Pass',category:'Subscriptions',isSubscription:true},
+'ps plus':{name:'PS Plus',category:'Subscriptions',isSubscription:true},
+'playstation plus':{name:'PS Plus',category:'Subscriptions',isSubscription:true},
+'amazon prime':{name:'Amazon Prime',category:'Subscriptions',isSubscription:true},
+'icloud':{name:'iCloud',category:'Subscriptions',isSubscription:true},
+'apple.com/bill':{name:'Apple Subscription',category:'Subscriptions',isSubscription:true},
+'tidal':{name:'Tidal',category:'Subscriptions',isSubscription:true},
+'deezer':{name:'Deezer',category:'Subscriptions',isSubscription:true},
 
 // DEBT PAYMENTS (isSubscription: false)
 'american express':{name:'American Express',category:'Debt Payments',subcategory:'Credit Card',isSubscription:false},
@@ -133,8 +144,19 @@ const MERCHANT_DB={
 'oyster':{name:'Oyster',category:'Transport',isSubscription:false},
 'trainline':{name:'Trainline',category:'Transport',isSubscription:false},
 'uber':{name:'Uber',category:'Transport',isSubscription:false},
-'bolt':{name:'Bolt',category:'Transport',isSubscription:false},
+'bolt ':{name:'Bolt',category:'Transport',isSubscription:false,_wordBound:true},
+'bolt.eu':{name:'Bolt',category:'Transport',isSubscription:false},
 'addison lee':{name:'Addison Lee',category:'Transport',isSubscription:false},
+'lime ':{name:'Lime',category:'Transport',isSubscription:false,_wordBound:true},
+'voi ':{name:'Voi',category:'Transport',isSubscription:false,_wordBound:true},
+'shell ':{name:'Shell',category:'Transport',isSubscription:false,_wordBound:true},
+'bp ':{name:'BP',category:'Transport',isSubscription:false,_wordBound:true},
+'esso':{name:'Esso',category:'Transport',isSubscription:false},
+'texaco':{name:'Texaco',category:'Transport',isSubscription:false},
+'avanti west':{name:'Avanti',category:'Transport',isSubscription:false},
+'lner':{name:'LNER',category:'Transport',isSubscription:false},
+'gwr ':{name:'GWR',category:'Transport',isSubscription:false,_wordBound:true},
+'northern rail':{name:'Northern Rail',category:'Transport',isSubscription:false},
 
 // FOOD DELIVERY (isSubscription: false) — delivery apps ONLY, NOT grocery shops
 'deliveroo':{name:'Deliveroo',category:'Food Delivery',isSubscription:false},
@@ -142,9 +164,9 @@ const MERCHANT_DB={
 'ubereats':{name:'Uber Eats',category:'Food Delivery',isSubscription:false},
 'just eat':{name:'Just Eat',category:'Food Delivery',isSubscription:false},
 'justeat':{name:'Just Eat',category:'Food Delivery',isSubscription:false},
-'gousto':{name:'Gousto',category:'Food Delivery',isSubscription:false},
-'hello fresh':{name:'HelloFresh',category:'Food Delivery',isSubscription:false},
-'hellofresh':{name:'HelloFresh',category:'Food Delivery',isSubscription:false},
+'gousto':{name:'Gousto',category:'Food Delivery',isSubscription:true},
+'hello fresh':{name:'HelloFresh',category:'Food Delivery',isSubscription:true},
+'hellofresh':{name:'HelloFresh',category:'Food Delivery',isSubscription:true},
 
 // GROCERIES — supermarkets and grocery shops, NOT food delivery
 'tesco':{name:'Tesco',category:'Groceries',isSubscription:false},
@@ -166,8 +188,10 @@ const MERCHANT_DB={
 
 // EATING OUT
 'starbucks':{name:'Starbucks',category:'Eating Out',isSubscription:false},
-'costa':{name:'Costa',category:'Eating Out',isSubscription:false},
-'pret':{name:'Pret',category:'Eating Out',isSubscription:false},
+'costa coffee':{name:'Costa',category:'Eating Out',isSubscription:false},
+'costa ':{name:'Costa',category:'Eating Out',isSubscription:false},
+'pret a manger':{name:'Pret',category:'Eating Out',isSubscription:false},
+'pret ':{name:'Pret',category:'Eating Out',isSubscription:false},
 'greggs':{name:'Greggs',category:'Eating Out',isSubscription:false},
 'mcdonalds':{name:'McDonalds',category:'Eating Out',isSubscription:false},
 'mcdonald':{name:'McDonalds',category:'Eating Out',isSubscription:false},
@@ -183,15 +207,20 @@ const MERCHANT_DB={
 'dominos':{name:'Dominos',category:'Eating Out',isSubscription:false},
 'wetherspoon':{name:'Wetherspoons',category:'Eating Out',isSubscription:false},
 'itsu':{name:'Itsu',category:'Eating Out',isSubscription:false},
-'leon':{name:'Leon',category:'Eating Out',isSubscription:false},
+'leon ':{name:'Leon',category:'Eating Out',isSubscription:false,_wordBound:true},
 'tortilla':{name:'Tortilla',category:'Eating Out',isSubscription:false},
-'gail':{name:'Gails',category:'Eating Out',isSubscription:false},
+'gails':{name:'Gails',category:'Eating Out',isSubscription:false},
+'gail s':{name:'Gails',category:'Eating Out',isSubscription:false},
 'caffe nero':{name:'Caffe Nero',category:'Eating Out',isSubscription:false},
-'nero':{name:'Caffe Nero',category:'Eating Out',isSubscription:false},
-'eat':{name:'EAT.',category:'Eating Out',isSubscription:false},
+'eat.':{name:'EAT.',category:'Eating Out',isSubscription:false},
+'eat ':{name:'EAT.',category:'Eating Out',isSubscription:false,_wordBound:true},
 'franco manca':{name:'Franco Manca',category:'Eating Out',isSubscription:false},
 'dishoom':{name:'Dishoom',category:'Eating Out',isSubscription:false},
 'yo sushi':{name:'Yo! Sushi',category:'Eating Out',isSubscription:false},
+'honest burger':{name:'Honest Burgers',category:'Eating Out',isSubscription:false},
+'bills restaurant':{name:"Bill's",category:'Eating Out',isSubscription:false},
+'cote ':{name:'Cote',category:'Eating Out',isSubscription:false},
+'brewdog':{name:'Brewdog',category:'Eating Out',isSubscription:false},
 
 // SHOPPING
 'amazon':{name:'Amazon',category:'Shopping',isSubscription:false},
@@ -203,7 +232,8 @@ const MERCHANT_DB={
 'primark':{name:'Primark',category:'Shopping',isSubscription:false},
 'uniqlo':{name:'Uniqlo',category:'Shopping',isSubscription:false},
 'john lewis':{name:'John Lewis',category:'Shopping',isSubscription:false},
-'next':{name:'Next',category:'Shopping',isSubscription:false},
+'next ':{name:'Next',category:'Shopping',isSubscription:false,_wordBound:true},
+'next.co':{name:'Next',category:'Shopping',isSubscription:false},
 'tk maxx':{name:'TK Maxx',category:'Shopping',isSubscription:false},
 'tkmaxx':{name:'TK Maxx',category:'Shopping',isSubscription:false},
 'ebay':{name:'eBay',category:'Shopping',isSubscription:false},
@@ -217,6 +247,13 @@ const MERCHANT_DB={
 'gymshark':{name:'Gymshark',category:'Shopping',isSubscription:false},
 'decathlon':{name:'Decathlon',category:'Shopping',isSubscription:false},
 'waterstones':{name:'Waterstones',category:'Shopping',isSubscription:false},
+'screwfix':{name:'Screwfix',category:'Shopping',isSubscription:false},
+'b&q':{name:'B&Q',category:'Shopping',isSubscription:false},
+'halfords':{name:'Halfords',category:'Shopping',isSubscription:false},
+'sports direct':{name:'Sports Direct',category:'Shopping',isSubscription:false},
+'river island':{name:'River Island',category:'Shopping',isSubscription:false},
+'new look':{name:'New Look',category:'Shopping',isSubscription:false},
+'matalan':{name:'Matalan',category:'Shopping',isSubscription:false},
 'boots':{name:'Boots',category:'Health',isSubscription:false},
 'superdrug':{name:'Superdrug',category:'Health',isSubscription:false},
 
@@ -230,7 +267,8 @@ const MERCHANT_DB={
 'xbox':{name:'Xbox',category:'Entertainment',isSubscription:false},
 'nintendo':{name:'Nintendo',category:'Entertainment',isSubscription:false},
 'ticketmaster':{name:'Ticketmaster',category:'Entertainment',isSubscription:false},
-'dice':{name:'DICE',category:'Entertainment',isSubscription:false},
+'dice ':{name:'DICE',category:'Entertainment',isSubscription:false,_wordBound:true},
+'dice.fm':{name:'DICE',category:'Entertainment',isSubscription:false},
 'eventbrite':{name:'Eventbrite',category:'Entertainment',isSubscription:false},
 
 // BILLS
@@ -242,17 +280,30 @@ const MERCHANT_DB={
 'edf':{name:'EDF',category:'Bills',isSubscription:false},
 'scottish power':{name:'Scottish Power',category:'Bills',isSubscription:false},
 'council tax':{name:'Council Tax',category:'Bills',isSubscription:false},
-'rent':{name:'Rent',category:'Bills',isSubscription:false},
+'rent ':{name:'Rent',category:'Bills',isSubscription:false,_wordBound:true},
+'rental':{name:'Rent',category:'Bills',isSubscription:false},
 'mortgage':{name:'Mortgage',category:'Bills',isSubscription:false},
 'thames water':{name:'Thames Water',category:'Bills',isSubscription:false},
-'water':{name:'Water',category:'Bills',isSubscription:false},
-'bt ':{name:'BT',category:'Bills',isSubscription:false},
-'sky ':{name:'Sky',category:'Bills',isSubscription:false},
+'anglian water':{name:'Anglian Water',category:'Bills',isSubscription:false},
+'united utilities':{name:'United Utilities',category:'Bills',isSubscription:false},
+'severn trent':{name:'Severn Trent',category:'Bills',isSubscription:false},
+'yorkshire water':{name:'Yorkshire Water',category:'Bills',isSubscription:false},
+'water ':{name:'Water',category:'Bills',isSubscription:false,_wordBound:true},
+'bt broadband':{name:'BT',category:'Bills',isSubscription:false},
+'bt group':{name:'BT',category:'Bills',isSubscription:false},
+'bt.com':{name:'BT',category:'Bills',isSubscription:false},
+'sky tv':{name:'Sky',category:'Bills',isSubscription:false},
+'sky digital':{name:'Sky',category:'Bills',isSubscription:false},
+'sky broadband':{name:'Sky',category:'Bills',isSubscription:false},
 'virgin media':{name:'Virgin Media',category:'Bills',isSubscription:false},
-'ee ':{name:'EE',category:'Bills',isSubscription:false},
+'plusnet':{name:'Plusnet',category:'Bills',isSubscription:false},
+'hyperoptic':{name:'Hyperoptic',category:'Bills',isSubscription:false},
+'ee ltd':{name:'EE',category:'Bills',isSubscription:false},
+'ee mobile':{name:'EE',category:'Bills',isSubscription:false},
 'vodafone':{name:'Vodafone',category:'Bills',isSubscription:false},
-'o2 ':{name:'O2',category:'Bills',isSubscription:false},
-'three ':{name:'Three',category:'Bills',isSubscription:false},
+'o2 uk':{name:'O2',category:'Bills',isSubscription:false},
+'three mobile':{name:'Three',category:'Bills',isSubscription:false},
+'three.co':{name:'Three',category:'Bills',isSubscription:false},
 'giffgaff':{name:'Giffgaff',category:'Bills',isSubscription:false},
 'tv licence':{name:'TV Licence',category:'Bills',isSubscription:false},
 'insurance':{name:'Insurance',category:'Bills',isSubscription:false},
@@ -263,16 +314,70 @@ const MERCHANT_DB={
 'pharmacy':{name:'Pharmacy',category:'Health',isSubscription:false},
 'optician':{name:'Optician',category:'Health',isSubscription:false},
 'specsavers':{name:'Specsavers',category:'Health',isSubscription:false},
+'vision express':{name:'Vision Express',category:'Health',isSubscription:false},
 
-// INCOME
+// TRAVEL
+'ryanair':{name:'Ryanair',category:'Travel',isSubscription:false},
+'easyjet':{name:'easyJet',category:'Travel',isSubscription:false},
+'british airways':{name:'British Airways',category:'Travel',isSubscription:false},
+'jet2':{name:'Jet2',category:'Travel',isSubscription:false},
+'wizz air':{name:'Wizz Air',category:'Travel',isSubscription:false},
+'wizzair':{name:'Wizz Air',category:'Travel',isSubscription:false},
+'tui ':{name:'TUI',category:'Travel',isSubscription:false,_wordBound:true},
+'booking.com':{name:'Booking.com',category:'Travel',isSubscription:false},
+'airbnb':{name:'Airbnb',category:'Travel',isSubscription:false},
+'hotels.com':{name:'Hotels.com',category:'Travel',isSubscription:false},
+'expedia':{name:'Expedia',category:'Travel',isSubscription:false},
+'skyscanner':{name:'Skyscanner',category:'Travel',isSubscription:false},
+'eurostar':{name:'Eurostar',category:'Travel',isSubscription:false},
+'national express':{name:'National Express',category:'Travel',isSubscription:false},
+
+// CHARITY
+'justgiving':{name:'JustGiving',category:'Charity',isSubscription:false},
+'gofundme':{name:'GoFundMe',category:'Charity',isSubscription:false},
+'charity':{name:'Charity',category:'Charity',isSubscription:false},
+'donation':{name:'Donation',category:'Charity',isSubscription:false},
+'cancer research':{name:'Cancer Research',category:'Charity',isSubscription:false},
+'british heart':{name:'British Heart Foundation',category:'Charity',isSubscription:false},
+'red cross':{name:'Red Cross',category:'Charity',isSubscription:false},
+'oxfam':{name:'Oxfam',category:'Charity',isSubscription:false},
+'macmillan':{name:'Macmillan',category:'Charity',isSubscription:false},
+
+// EDUCATION
+'udemy':{name:'Udemy',category:'Education',isSubscription:false},
+'coursera':{name:'Coursera',category:'Education',isSubscription:false},
+'linkedin learning':{name:'LinkedIn Learning',category:'Education',isSubscription:false},
+'student loan':{name:'Student Loan',category:'Education',isSubscription:false},
+'student loans':{name:'Student Loan',category:'Education',isSubscription:false},
+'university':{name:'University',category:'Education',isSubscription:false},
+'tuition':{name:'Tuition',category:'Education',isSubscription:false},
+'nursery':{name:'Nursery',category:'Education',isSubscription:false},
+'school fees':{name:'School Fees',category:'Education',isSubscription:false},
+
+// SAVINGS & INVESTMENTS (not counted as spending)
+'vanguard':{name:'Vanguard',category:'Savings',isSubscription:false},
+'nutmeg':{name:'Nutmeg',category:'Savings',isSubscription:false},
+'freetrade':{name:'Freetrade',category:'Savings',isSubscription:false},
+'trading 212':{name:'Trading 212',category:'Savings',isSubscription:false},
+'hargreaves':{name:'Hargreaves Lansdown',category:'Savings',isSubscription:false},
+'aj bell':{name:'AJ Bell',category:'Savings',isSubscription:false},
+'moneybox':{name:'Moneybox',category:'Savings',isSubscription:false},
+'plum ':{name:'Plum',category:'Savings',isSubscription:false,_wordBound:true},
+'chip ':{name:'Chip',category:'Savings',isSubscription:false,_wordBound:true},
+
+// INCOME — only genuine income sources, NOT refunds
 'salary':{name:'Salary',category:'Income',isSubscription:false},
 'wages':{name:'Wages',category:'Income',isSubscription:false},
-'bacs':{name:'BACS',category:'Income',isSubscription:false},
-'refund':{name:'Refund',category:'Income',isSubscription:false},
+'payroll':{name:'Payroll',category:'Income',isSubscription:false},
 'interest':{name:'Interest',category:'Income',isSubscription:false},
 'dividend':{name:'Dividend',category:'Income',isSubscription:false},
 'hmrc':{name:'HMRC',category:'Income',isSubscription:false},
-'tax refund':{name:'Tax Refund',category:'Income',isSubscription:false}
+'tax refund':{name:'Tax Refund',category:'Income',isSubscription:false},
+
+// REFUNDS — credits but not income (excluded from income calculations)
+'refund':{name:'Refund',category:'Refund',isSubscription:false},
+'reversal':{name:'Reversal',category:'Refund',isSubscription:false},
+'cashback':{name:'Cashback',category:'Refund',isSubscription:false}
 };
 
 
@@ -416,7 +521,7 @@ return result;
 
 // Send all spending transactions to Claude in parallel batches for categorisation
 async verifyWithClaude(enrichedTxs,onStatus){
-const toVerify=enrichedTxs.filter(tx=>!tx.isIncome&&!tx.isTransfer&&Math.abs(tx.amount)>0);
+const toVerify=enrichedTxs.filter(tx=>!tx.isIncome&&!tx.isTransfer&&!tx.isRefund&&Math.abs(tx.amount)>0);
 if(toVerify.length===0)return enrichedTxs;
 
 const BATCH_SIZE=50;
@@ -424,12 +529,16 @@ const batches=[];
 for(let i=0;i<toVerify.length;i+=BATCH_SIZE)batches.push(toVerify.slice(i,i+BATCH_SIZE));
 onStatus?.('Categorising '+toVerify.length+' transactions...');
 
+// Map common Claude category variants to our canonical names
+const VALID_CATEGORIES=new Set(['Groceries','Food Delivery','Eating Out','Subscriptions','Debt Payments','Bills','Transport','Shopping','Entertainment','Health','Travel','Charity','Education','Savings','Refund','Other']);
+const CATEGORY_ALIASES={'Dining':'Eating Out','Dining Out':'Eating Out','Restaurants':'Eating Out','Restaurant':'Eating Out','Cafes':'Eating Out','Cafe':'Eating Out','Grocery':'Groceries','Supermarket':'Groceries','Supermarkets':'Groceries','Delivery':'Food Delivery','Takeaway':'Food Delivery','Takeaways':'Food Delivery','Subscription':'Subscriptions','Debt':'Debt Payments','Debt Payment':'Debt Payments','Loan':'Debt Payments','Loans':'Debt Payments','Bill':'Bills','Utilities':'Bills','Utility':'Bills','Telecom':'Bills','Mobile':'Bills','Transportation':'Transport','Taxi':'Transport','Fuel':'Transport','Petrol':'Transport','Retail':'Shopping','Clothing':'Shopping','Clothes':'Shopping','Fashion':'Shopping','Leisure':'Entertainment','Gaming':'Entertainment','Games':'Entertainment','Fitness':'Health','Gym':'Health','Medical':'Health','Healthcare':'Health','Wellness':'Health','Flights':'Travel','Hotels':'Travel','Holiday':'Travel','Holidays':'Travel','Accommodation':'Travel','Donations':'Charity','Donation':'Charity','Investment':'Savings','Investments':'Savings','Transfer':'Transfers','Transfers':'Transfers','Income':'Income'};
+const normaliseCategory=c=>{if(!c)return'Other';if(VALID_CATEGORIES.has(c))return c;return CATEGORY_ALIASES[c]||'Other'};
 const processBatch=async(batch,retries=2)=>{
 const txList=batch.map((tx,i)=>`${i+1}. "${tx.description}" £${Math.abs(tx.amount).toFixed(2)}`).join('\n');
 const prompt=`Categorise these UK bank transactions. Return JSON array only.
 Each object: {"index":N,"merchant":"Name","category":"Cat","isSubscription":false}
-Categories: Groceries, Food Delivery, Eating Out, Subscriptions (isSubscription=true), Debt Payments, Bills, Transport, Shopping, Entertainment, Health, Other
-Groceries=supermarkets. Food Delivery=Deliveroo/UberEats/JustEat. Eating Out=restaurants/cafes/pubs.
+Categories: Groceries, Food Delivery, Eating Out, Subscriptions (isSubscription=true), Debt Payments, Bills, Transport, Shopping, Entertainment, Health, Travel, Charity, Education, Savings, Other
+Groceries=supermarkets. Food Delivery=Deliveroo/UberEats/JustEat. Eating Out=restaurants/cafes/pubs. Travel=flights/hotels/holidays. Charity=donations/giving. Education=courses/tuition/student loans. Savings=investments/ISAs/trading platforms.
 Transactions:
 ${txList}`;
 for(let attempt=0;attempt<=retries;attempt++){
@@ -442,12 +551,22 @@ const cats=JSON.parse(jsonMatch[0]);
 cats.forEach(cat=>{
 const idx=(cat.index||0)-1;
 if(idx>=0&&idx<batch.length){
-if(cat.merchant)batch[idx].merchant=cat.merchant;
-if(cat.category)batch[idx].category=cat.category;
-if(typeof cat.isSubscription==='boolean')batch[idx].isSubscription=cat.isSubscription;
-batch[idx].isDebt=cat.category==='Debt Payments';
-batch[idx].isIncome=cat.category==='Income';
-batch[idx].isTransfer=cat.category==='Transfers';
+const tx=batch[idx];
+const claudeCat=normaliseCategory(cat.category);
+// Only override local enrichment if local confidence was low (category was 'Other')
+if(tx.confidence==='high'&&tx.category!=='Other'){
+// Keep local enrichment but let Claude fill in merchant name if we have a generic one
+if(cat.merchant&&tx.merchant==='Unknown')tx.merchant=cat.merchant;
+}else{
+if(cat.merchant)tx.merchant=cat.merchant;
+tx.category=claudeCat;
+if(typeof cat.isSubscription==='boolean')tx.isSubscription=cat.isSubscription;
+tx.isDebt=claudeCat==='Debt Payments';
+tx.isIncome=claudeCat==='Income';
+tx.isRefund=claudeCat==='Refund';
+tx.isSavings=claudeCat==='Savings';
+tx.isTransfer=claudeCat==='Transfers'||claudeCat==='Savings';
+}
 }
 });
 return;
@@ -517,19 +636,21 @@ const n=tx.descNorm;
 let lookup=null;let confidence='low';
 // Sort patterns by length descending so "uber eats" matches before "uber", "amazon prime video" before "amazon"
 if(!this._sortedPatterns)this._sortedPatterns=Object.entries(MERCHANT_DB).sort((a,b)=>b[0].length-a[0].length);
-for(const[pattern,data]of this._sortedPatterns){if(n.includes(pattern)){lookup=data;confidence='high';break}}
+for(const[pattern,data]of this._sortedPatterns){if(data._wordBound){const p=pattern.trim();const idx=n.indexOf(p);if(idx>=0&&(idx===0||n[idx-1]===' ')&&(idx+p.length>=n.length||n[idx+p.length]===' ')){lookup=data;confidence='high';break}}else if(n.includes(pattern)){lookup=data;confidence='high';break}}
 if(!lookup){
 const words=n.split(' ').filter(w=>w.length>2);
 lookup={name:words.slice(0,2).map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(' ')||'Unknown',category:'Other',isSubscription:false};
 }
 const isIncomeCategory=lookup.category==='Income';
+const isRefund=lookup.category==='Refund';
+const isSavings=lookup.category==='Savings';
 const isLargeCredit=tx.amount>1000&&lookup.category==='Other';
-return{...tx,merchant:lookup.name,category:isLargeCredit?'Income':lookup.category,subcategory:lookup.subcategory||'',isSubscription:lookup.isSubscription,isIncome:isIncomeCategory||isLargeCredit,isTransfer:lookup.category==='Transfers',isDebt:lookup.category==='Debt Payments',confidence};
+return{...tx,merchant:lookup.name,category:isLargeCredit?'Income':lookup.category,subcategory:lookup.subcategory||'',isSubscription:lookup.isSubscription,isIncome:isIncomeCategory||isLargeCredit,isRefund,isSavings,isTransfer:lookup.category==='Transfers'||isSavings,isDebt:lookup.category==='Debt Payments',confidence};
 }
 
 detectRecurring(txs){
 const byM={};
-txs.forEach(tx=>{if(!tx.merchant||tx.category==='Income'||tx.category==='Transfers')return;if(!byM[tx.merchant])byM[tx.merchant]=[];byM[tx.merchant].push(tx)});
+txs.forEach(tx=>{if(!tx.merchant||tx.isIncome||tx.isTransfer||tx.isRefund)return;if(!byM[tx.merchant])byM[tx.merchant]=[];byM[tx.merchant].push(tx)});
 const recurring=[];
 for(const[merchant,list]of Object.entries(byM)){
 if(list.length<2)continue;
@@ -550,8 +671,8 @@ return recurring.sort((a,b)=>b.averageAmount-a.averageAmount);
 }
 
 buildProfile(txs,recurring){
-const income=txs.filter(tx=>tx.isIncome&&tx.amount>0);
-const spending=txs.filter(tx=>tx.amount<0&&!tx.isTransfer);
+const income=txs.filter(tx=>tx.isIncome&&!tx.isRefund&&tx.amount>0);
+const spending=txs.filter(tx=>tx.amount<0&&!tx.isTransfer&&!tx.isRefund);
 const byCat={};
 spending.forEach(tx=>{const k=tx.category||'Other';if(!byCat[k])byCat[k]={total:0,count:0};byCat[k].total+=Math.abs(tx.amount);byCat[k].count++});
 const totalIncome=income.reduce((s,tx)=>s+tx.amount,0);
@@ -561,7 +682,7 @@ const surplus=totalIncome-totalSpending;
 // Calculate month span from transaction dates for accurate monthly averages
 const dated=txs.filter(tx=>tx.date);
 let months=1;
-if(dated.length>=2){const dates=dated.map(tx=>tx.date.getTime());const earliest=Math.min(...dates);const latest=Math.max(...dates);months=Math.max(1,Math.round((latest-earliest)/(1000*60*60*24*30.44)))||1}
+if(dated.length>=2){const dates=dated.map(tx=>tx.date.getTime());const earliest=Math.min(...dates);const latest=Math.max(...dates);months=Math.max(1,(latest-earliest)/(1000*60*60*24*30.44))||1}
 const mo=m=>Math.round(m/months);
 
 const subs=recurring.filter(r=>r.isSubscription);
@@ -584,7 +705,7 @@ const incomeStreams=incomeDescs.size;
 
 return{
 transactionCount:txs.length,monthSpan:months,
-monthly:{income:mo(totalIncome),spending:mo(totalSpending),surplus:mo(surplus),subscriptions:Math.round(subTotal),debtPayments:Math.round(debtTotal),foodDelivery:mo(byCat['Food Delivery']?.total||0),shopping:mo(byCat['Shopping']?.total||0),entertainment:mo(byCat['Entertainment']?.total||0),groceries:mo(byCat['Groceries']?.total||0),transport:mo(byCat['Transport']?.total||0),eatingOut:mo(byCat['Eating Out']?.total||0),health:mo(byCat['Health']?.total||0)},
+monthly:{income:mo(totalIncome),spending:mo(totalSpending),surplus:mo(surplus),subscriptions:Math.round(subTotal),debtPayments:Math.round(debtTotal),foodDelivery:mo(byCat['Food Delivery']?.total||0),shopping:mo(byCat['Shopping']?.total||0),entertainment:mo(byCat['Entertainment']?.total||0),groceries:mo(byCat['Groceries']?.total||0),transport:mo(byCat['Transport']?.total||0),eatingOut:mo(byCat['Eating Out']?.total||0),health:mo(byCat['Health']?.total||0),travel:mo(byCat['Travel']?.total||0),charity:mo(byCat['Charity']?.total||0),education:mo(byCat['Education']?.total||0)},
 metrics:{savingsRate:totalIncome>0?Math.round((surplus/totalIncome)*100):0,subscriptionCount:subs.length,debtAccountCount:debtPay.length,creditCardCount:creditCards.length,bnplCount:bnpl.length,streamingCount:streaming.length},
 // Spending trend: compare last 30 days vs overall monthly average
 spendingTrend:this.calcSpendingTrend(spending,months),
@@ -620,10 +741,17 @@ return ins;
 
 calcSpendingTrend(spending,months){
 if(months<2||spending.length<10)return null;
-const now=new Date();const thirtyDaysAgo=new Date(now.getTime()-30*24*60*60*1000);
-const recent=spending.filter(tx=>tx.date&&tx.date>=thirtyDaysAgo);
+// Anchor on the latest transaction date, not wall-clock time
+const datedSpending=spending.filter(tx=>tx.date);
+if(datedSpending.length<10)return null;
+const latestDate=new Date(Math.max(...datedSpending.map(tx=>tx.date.getTime())));
+const thirtyDaysAgo=new Date(latestDate.getTime()-30*24*60*60*1000);
+const recent=datedSpending.filter(tx=>tx.date>=thirtyDaysAgo);
 const recentTotal=recent.reduce((s,tx)=>s+Math.abs(tx.amount),0);
-const overallMonthly=spending.reduce((s,tx)=>s+Math.abs(tx.amount),0)/months;
+// Exclude the recent period from the baseline to get a true comparison
+const olderTotal=datedSpending.filter(tx=>tx.date<thirtyDaysAgo).reduce((s,tx)=>s+Math.abs(tx.amount),0);
+const olderMonths=Math.max(1,months-1);
+const overallMonthly=olderTotal>0?olderTotal/olderMonths:spending.reduce((s,tx)=>s+Math.abs(tx.amount),0)/months;
 if(overallMonthly===0)return null;
 const pctChange=Math.round(((recentTotal-overallMonthly)/overallMonthly)*100);
 // Categorise recent spending
