@@ -586,7 +586,8 @@ if(tx.confidence==='high'&&tx.category!=='Other'){
 // Keep local enrichment but let Claude fill in merchant name if we have a generic one
 if(cat.merchant&&tx.merchant==='Unknown')tx.merchant=cat.merchant;
 }else{
-if(cat.merchant)tx.merchant=cat.merchant;
+// Normalize merchant name to title case to prevent duplicates like "AMERICAN Express" vs "American Express"
+if(cat.merchant){const nm=cat.merchant.trim();tx.merchant=nm.split(/\s+/).map(w=>w.charAt(0).toUpperCase()+w.slice(1).toLowerCase()).join(' ')}
 tx.category=claudeCat;
 if(typeof cat.isSubscription==='boolean')tx.isSubscription=cat.isSubscription;
 tx.isDebt=claudeCat==='Debt Payments';
@@ -594,6 +595,12 @@ tx.isIncome=claudeCat==='Income';
 tx.isRefund=claudeCat==='Refund';
 tx.isSavings=claudeCat==='Savings';
 tx.isTransfer=claudeCat==='Transfers'||claudeCat==='Savings';
+// Preserve subcategory for debt if Claude identified it
+if(claudeCat==='Debt Payments'&&!tx.subcategory){
+const desc=tx.descNorm||'';
+if(['klarna','clearpay','afterpay','zilch','laybuy'].some(b=>desc.includes(b)))tx.subcategory='BNPL';
+else if(['amex','american express','barclaycard','capital one','capitalone','mbna','aqua','vanquis'].some(b=>desc.includes(b)))tx.subcategory='Credit Card';
+}
 }
 }
 });
@@ -658,6 +665,24 @@ m=s.match(/(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);if(m)return new Date(m[1],m[2
 m=s.match(/(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\w*\s+(\d{4})/i);if(m){const months={jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};return new Date(m[3],months[m[2].toLowerCase().slice(0,3)],m[1])}
 const d=new Date(s);return isNaN(d)?null:d}
 norm(d){return d.toLowerCase().replace(/[^\w\s]/g,' ').replace(/\d{4,}/g,'').replace(/\s+/g,' ').trim()}
+
+// Detect likely person-to-person transfers (names like "JOHN SMITH", "J SMITH") that aren't merchants
+_isLikelyPersonName(merchant){
+if(!merchant||merchant.length<3)return false;
+const m=merchant.toLowerCase();
+// Skip known merchant names
+if(this._sortedPatterns&&this._sortedPatterns.some(([,data])=>data.name.toLowerCase()===m))return false;
+// Common transfer indicators
+if(m.includes('transfer')||m.includes('faster payment')||m.includes('standing order'))return true;
+// Pattern: 1-2 short words, all letters, no known brand indicators
+const words=m.split(/\s+/).filter(w=>w.length>0);
+if(words.length>=1&&words.length<=3&&words.every(w=>/^[a-z'-]+$/.test(w))&&!words.some(w=>w.length>12)){
+// Likely a person name if it's short alphabetic words with no numbers or special chars
+const brandIndicators=['ltd','inc','plc','limited','store','shop','market','cafe','restaurant','gym','club','online','digital','mobile','energy','water','insurance','finance'];
+if(!words.some(w=>brandIndicators.includes(w)))return true;
+}
+return false;
+}
 
 enrichTransaction(tx){
 const n=tx.descNorm;
@@ -726,10 +751,32 @@ const byMerch={};
 spending.forEach(tx=>{if(!tx.merchant)return;if(!byMerch[tx.merchant])byMerch[tx.merchant]={total:0,count:0};byMerch[tx.merchant].total+=Math.abs(tx.amount);byMerch[tx.merchant].count++});
 const topMerchants=Object.entries(byMerch).map(([merchant,d])=>({merchant,total:Math.round(d.total),count:d.count})).sort((a,b)=>b.total-a.total).slice(0,10);
 
-// Count distinct income sources
-const incomeDescs=new Set();
-income.forEach(tx=>{const n=tx.descNorm||'';const key=n.split(' ').slice(0,2).join(' ');if(key)incomeDescs.add(key)});
-const incomeStreams=incomeDescs.size;
+// Income analysis — frequency, sources, amounts
+const incomeBySource={};
+income.forEach(tx=>{const n=tx.descNorm||'';const key=n.split(' ').slice(0,2).join(' ')||'unknown';if(!incomeBySource[key])incomeBySource[key]={total:0,count:0,amounts:[],dates:[],merchant:tx.merchant||key};incomeBySource[key].total+=tx.amount;incomeBySource[key].count++;incomeBySource[key].amounts.push(tx.amount);if(tx.date)incomeBySource[key].dates.push(tx.date)});
+const incomeSources=Object.values(incomeBySource).map(src=>{
+let frequency='irregular';
+if(src.dates.length>=2){src.dates.sort((a,b)=>a-b);const intervals=[];for(let i=1;i<src.dates.length;i++){const days=Math.round((src.dates[i]-src.dates[i-1])/(1000*60*60*24));if(days>0)intervals.push(days)}
+if(intervals.length>0){const avgInterval=intervals.reduce((a,b)=>a+b,0)/intervals.length;frequency=avgInterval<10?'weekly':avgInterval<18?'fortnightly':avgInterval<45?'monthly':'irregular'}}
+const avgAmount=Math.round(src.total/src.count);
+return{source:src.merchant,frequency,avgAmount,total:Math.round(src.total),count:src.count,monthly:mo(src.total)}
+}).sort((a,b)=>b.total-a.total);
+const incomeStreams=incomeSources.length;
+
+// Non-discretionary vs discretionary split
+const nonDiscretionaryCats=['Bills','Groceries','Transport','Debt Payments','Education','Health'];
+const nonDiscretionary={total:0,items:[]};
+const discretionary={total:0,items:[]};
+for(const[cat,data]of Object.entries(byCat)){
+const monthly=mo(data.total);
+if(nonDiscretionaryCats.includes(cat)||(cat==='Subscriptions')){nonDiscretionary.total+=monthly;nonDiscretionary.items.push({category:cat,monthly})}
+else if(cat!=='Other'&&cat!=='Transfers'&&cat!=='Savings'&&cat!=='Refund'){discretionary.total+=monthly;discretionary.items.push({category:cat,monthly})}
+}
+// Add subscription + debt from recurring (more accurate than category totals)
+const subMo=Math.round(subTotal);const debtMo=Math.round(debtTotal);
+nonDiscretionary.items.sort((a,b)=>b.monthly-a.monthly);
+discretionary.items.sort((a,b)=>b.monthly-a.monthly);
+const leftToDecide=mo(totalIncome)-nonDiscretionary.total;
 
 return{
 transactionCount:txs.length,monthSpan:months,
@@ -737,6 +784,10 @@ monthly:{income:mo(totalIncome),spending:mo(totalSpending),surplus:mo(surplus),s
 metrics:{savingsRate:totalIncome>0?Math.round((surplus/totalIncome)*100):0,subscriptionCount:subs.length,debtAccountCount:debtPay.length,creditCardCount:creditCards.length,bnplCount:bnpl.length,streamingCount:streaming.length},
 // Spending trend: compare last 30 days vs overall monthly average
 spendingTrend:this.calcSpendingTrend(spending,months),
+// Income analysis
+incomeSources,
+// Non-discretionary vs discretionary
+budgetReality:{nonDiscretionary,discretionary,leftToDecide},
 categories,topMerchants,recurring,subscriptions:subs,debtPayments:debtPay,incomeStreams
 };
 }
@@ -833,9 +884,9 @@ const ratio=Math.round((wkndDaily/wkdyDaily)*10)/10;
 if(ratio>1.3){patterns.push({pattern:'weekend_premium',text:'Your weekend spending is '+ratio+'x your weekday average',detail:'\u00a3'+Math.round(wkndDaily)+'/day on weekends vs \u00a3'+Math.round(wkdyDaily)+'/day on weekdays',severity:ratio>1.8?'high':'medium'})}
 }
 
-// 3. Hidden subscriptions — merchants appearing 8+ times with regular frequency but not flagged isSubscription
+// 3. Hidden subscriptions — merchants appearing 8+ times, excluding person-to-person transfers
 const byMerch={};
-spending.forEach(tx=>{if(!tx.merchant||tx.isSubscription)return;if(!byMerch[tx.merchant])byMerch[tx.merchant]={count:0,total:0};byMerch[tx.merchant].count++;byMerch[tx.merchant].total+=Math.abs(tx.amount)});
+spending.forEach(tx=>{if(!tx.merchant||tx.isSubscription||tx.category==='Transfers'||tx.category==='Debt Payments')return;if(this._isLikelyPersonName(tx.merchant))return;if(!byMerch[tx.merchant])byMerch[tx.merchant]={count:0,total:0};byMerch[tx.merchant].count++;byMerch[tx.merchant].total+=Math.abs(tx.amount)});
 const months=Math.max(1,txs.filter(tx=>tx.date).length>=2?((Math.max(...txs.filter(tx=>tx.date).map(tx=>tx.date.getTime()))-Math.min(...txs.filter(tx=>tx.date).map(tx=>tx.date.getTime())))/(1000*60*60*24*30.44)):1);
 for(const[merchant,data]of Object.entries(byMerch)){
 if(data.count>=8){const monthly=Math.round(data.total/months);patterns.push({pattern:'hidden_subscription',text:merchant+' appears '+data.count+' times \u2014 a hidden \u00a3'+monthly+'/mo habit',detail:'That is \u00a3'+(monthly*12)+'/yr on what is effectively a regular commitment',severity:monthly>50?'high':'medium',merchant,monthlyAmount:monthly})}
@@ -875,18 +926,24 @@ const totalSpend=m.spending||1;
 const recurringPct=Math.min(100,Math.round((recurringSpend/totalSpend)*100));
 scores.intentionality={score:Math.max(0,Math.min(100,100-recurringPct*1.5)),weight:25,label:'Intentionality',detail:recurringPct+'% of spending is recurring commitments'};
 
-// Debt efficiency (20%) — debt payments as % of income
-const debtPct=m.income>0?Math.round((m.debtPayments/m.income)*100):0;
-scores.debtEfficiency={score:debtPct===0?100:Math.max(0,100-debtPct*3),weight:20,label:'Debt Efficiency',detail:debtPct>0?debtPct+'% of income goes to debt':'Debt-free'};
+// Debt efficiency (20%) — debt payments as % of income (use category totals as primary, recurring as fallback)
+const debtFromCat=profile.categories.find(c=>c.name==='Debt Payments');
+const debtMonthly=debtFromCat?debtFromCat.total:m.debtPayments;
+const debtPct=m.income>0?Math.round((debtMonthly/m.income)*100):0;
+scores.debtEfficiency={score:debtPct===0?100:Math.max(0,100-debtPct*3),weight:20,label:'Debt Efficiency',detail:debtPct>0?debtPct+'% of income goes to debt (\u00a3'+debtMonthly+'/mo)':'No debt payments detected'};
 
 // Savings capacity (25%) — savings rate vs 20% target
 const sr=mt.savingsRate||0;
 scores.savingsCapacity={score:Math.min(100,Math.max(0,Math.round((sr/20)*100))),weight:25,label:'Savings Capacity',detail:sr+'% savings rate'+(sr>=20?' (on target)':' (target: 20%)')};
 
-// Subscription utilisation (15%) — fewer dormant subs = better
+// Subscription utilisation (15%) — account for count + refund signals
 const subCount=mt.subscriptionCount||0;
-const subScore=subCount===0?100:subCount<=3?90:subCount<=5?70:subCount<=8?50:30;
-scores.subscriptionHealth={score:subScore,weight:15,label:'Subscription Health',detail:subCount+' active subscription'+(subCount!==1?'s':'')};
+// Count subscription-related refunds as a signal of forgotten/unused subs
+const subRefunds=profile.categories.find(c=>c.name==='Refund');
+const hasSubRefunds=subRefunds&&subRefunds.count>0;
+let subScore=subCount===0?100:subCount<=3?85:subCount<=5?65:subCount<=8?45:25;
+if(hasSubRefunds)subScore=Math.max(0,subScore-15);// Refunds suggest forgotten subs
+scores.subscriptionHealth={score:subScore,weight:15,label:'Subscription Health',detail:subCount+' active subscription'+(subCount!==1?'s':'')+(hasSubRefunds?' (refunds suggest forgotten services)':'')};
 
 // Convenience premium (15%) — delivery + eating out as % of total
 const convenienceSpend=(m.foodDelivery||0)+(m.eatingOut||0);
@@ -1108,6 +1165,41 @@ const patternIcon={payday_splurge:'📅',weekend_premium:'📆',hidden_subscript
 return(<div className="card-box slide-up" style={{border:'1px solid rgba(178,114,232,0.15)'}}><div className="section-title" style={{color:'var(--lavender)'}}>Behavioral Patterns</div><p style={{color:'var(--dim)',fontSize:'0.78rem',marginBottom:'1rem'}}>What your transaction timing reveals</p>
 <div style={{display:'flex',flexDirection:'column',gap:'0.85rem'}}>{patterns.map((p,i)=>(<div key={i} style={{display:'flex',gap:'0.75rem',alignItems:'flex-start'}}><span style={{fontSize:'1.1rem',marginTop:'0.1rem'}}>{patternIcon[p.pattern]||'📊'}</span><div style={{flex:1}}><p style={{color:'#fff',fontSize:'0.88rem',fontWeight:500,marginBottom:'0.2rem'}}>{p.text}</p><p style={{color:'var(--dim)',fontSize:'0.78rem',lineHeight:1.5}}>{p.detail}</p></div><span className="mono" style={{fontSize:'0.6rem',color:sevColor[p.severity],padding:'0.15rem 0.4rem',background:p.severity==='high'?'rgba(232,114,114,0.1)':'rgba(232,200,114,0.08)',borderRadius:'4px',whiteSpace:'nowrap'}}>{p.severity}</span></div>))}</div></div>)};
 
+// INCOME ANALYSIS COMPONENT
+const IncomeAnalysisCard=({incomeSources,monthlyIncome})=>{if(!incomeSources||incomeSources.length===0)return null;
+const freqLabel={weekly:'Weekly',fortnightly:'Fortnightly',monthly:'Monthly',irregular:'Irregular'};
+const freqColor={weekly:'var(--sky)',fortnightly:'var(--lavender)',monthly:'var(--mint)',irregular:'var(--dim)'};
+return(<div className="card-box slide-up" style={{border:'1px solid rgba(114,232,176,0.15)'}}><div className="section-title" style={{color:'var(--mint)'}}>Your Income</div>
+<div style={{textAlign:'center',marginBottom:'1.25rem',paddingBottom:'1rem',borderBottom:'1px solid var(--border)'}}><p className="mono" style={{fontSize:'2rem',fontWeight:700,color:'var(--mint)'}}>£{monthlyIncome.toLocaleString()}</p><p style={{fontSize:'0.8rem',color:'var(--dim)'}}>total monthly income</p></div>
+<div style={{display:'flex',flexDirection:'column',gap:'0.85rem'}}>{incomeSources.map((src,i)=>(<div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'0.6rem',background:'rgba(255,255,255,0.02)',borderRadius:'6px'}}><div><p style={{color:'#fff',fontSize:'0.88rem',fontWeight:500}}>{src.source}</p><span className="mono" style={{fontSize:'0.65rem',color:freqColor[src.frequency],background:freqColor[src.frequency]+'15',padding:'0.1rem 0.4rem',borderRadius:'3px'}}>{freqLabel[src.frequency]||src.frequency}</span></div><div style={{textAlign:'right'}}><p className="mono" style={{color:'var(--mint)',fontSize:'0.9rem',fontWeight:600}}>£{src.avgAmount.toLocaleString()}</p><p style={{color:'var(--muted)',fontSize:'0.7rem'}}>{src.frequency==='weekly'?'per week':src.frequency==='fortnightly'?'every 2 weeks':'per month'}</p></div></div>))}</div></div>)};
+
+// BUDGET REALITY COMPONENT — non-discretionary vs what's left
+const BudgetRealityCard=({budgetReality,monthlyIncome})=>{if(!budgetReality)return null;
+const{nonDiscretionary,discretionary,leftToDecide}=budgetReality;
+const ndPct=monthlyIncome>0?Math.round((nonDiscretionary.total/monthlyIncome)*100):0;
+const discPct=monthlyIncome>0?Math.round((discretionary.total/monthlyIncome)*100):0;
+const leftPct=monthlyIncome>0?Math.round((leftToDecide/monthlyIncome)*100):0;
+return(<div className="card-box slide-up" style={{border:'1px solid rgba(232,200,114,0.15)'}}><div className="section-title" style={{color:'var(--accent)'}}>Your Budget Reality</div>
+
+<div style={{display:'flex',height:'8px',borderRadius:'4px',overflow:'hidden',marginBottom:'1.25rem',background:'rgba(255,255,255,0.04)'}}>
+<div style={{width:ndPct+'%',background:'var(--coral)',transition:'width 0.5s'}}/>
+<div style={{width:discPct+'%',background:'var(--accent)',transition:'width 0.5s'}}/>
+<div style={{width:Math.max(0,leftPct)+'%',background:'var(--mint)',transition:'width 0.5s'}}/>
+</div>
+
+<div style={{display:'flex',justifyContent:'space-between',marginBottom:'1.5rem',gap:'0.5rem'}}>
+<div style={{textAlign:'center',flex:1}}><p className="mono" style={{fontSize:'1.1rem',fontWeight:700,color:'var(--coral)'}}>£{nonDiscretionary.total}</p><p style={{fontSize:'0.7rem',color:'var(--dim)'}}>Non-negotiable</p><p style={{fontSize:'0.65rem',color:'var(--muted)'}}>{ndPct}%</p></div>
+<div style={{textAlign:'center',flex:1}}><p className="mono" style={{fontSize:'1.1rem',fontWeight:700,color:'var(--accent)'}}>£{discretionary.total}</p><p style={{fontSize:'0.7rem',color:'var(--dim)'}}>Lifestyle</p><p style={{fontSize:'0.65rem',color:'var(--muted)'}}>{discPct}%</p></div>
+<div style={{textAlign:'center',flex:1}}><p className="mono" style={{fontSize:'1.1rem',fontWeight:700,color:leftToDecide>0?'var(--mint)':'var(--coral)'}}>£{Math.abs(leftToDecide)}</p><p style={{fontSize:'0.7rem',color:'var(--dim)'}}>{leftToDecide>=0?'Left to decide':'Overspend'}</p><p style={{fontSize:'0.65rem',color:'var(--muted)'}}>{Math.abs(leftPct)}%</p></div>
+</div>
+
+<div style={{marginBottom:'1rem'}}><p style={{color:'var(--muted)',fontSize:'0.7rem',marginBottom:'0.5rem',textTransform:'uppercase',letterSpacing:'0.1em'}}>Non-negotiable breakdown</p>
+<div style={{display:'flex',flexDirection:'column',gap:'0.4rem'}}>{nonDiscretionary.items.filter(i=>i.monthly>0).map((item,i)=>(<div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><span style={{color:'var(--text2)',fontSize:'0.82rem'}}>{item.category}</span><span className="mono" style={{color:'var(--coral)',fontSize:'0.82rem'}}>£{item.monthly}</span></div>))}</div></div>
+
+{discretionary.items.length>0&&(<div><p style={{color:'var(--muted)',fontSize:'0.7rem',marginBottom:'0.5rem',textTransform:'uppercase',letterSpacing:'0.1em'}}>Lifestyle spending</p>
+<div style={{display:'flex',flexDirection:'column',gap:'0.4rem'}}>{discretionary.items.filter(i=>i.monthly>0).map((item,i)=>(<div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><span style={{color:'var(--text2)',fontSize:'0.82rem'}}>{item.category}</span><span className="mono" style={{color:'var(--accent)',fontSize:'0.82rem'}}>£{item.monthly}</span></div>))}</div></div>)}
+</div>)};
+
 // COMPOUND COST COMPONENT
 const CompoundCostCard=({costs})=>{if(!costs||costs.length===0)return null;
 const maxTen=Math.max(...costs.map(c=>c.tenYear),1);
@@ -1130,6 +1222,10 @@ const submitEmail=async e=>{e.preventDefault();if(!email||emailStatus==='sending
 return(<div style={{minHeight:'100vh',padding:'5rem 1rem 3rem',position:'relative',zIndex:1}}><div style={{maxWidth:'500px',margin:'0 auto'}}>
 <div className="fade-in" style={{display:'flex',justifyContent:'center',marginBottom:'1.5rem'}}><ResultCard ref={cardRef} result={result}/></div>
 <div className="slide-up" style={{display:'flex',gap:'0.5rem',marginBottom:'1.5rem'}}><button onClick={downloadCard} disabled={downloading} className="mono" style={{flex:1,padding:'0.7rem',background:'var(--accent)',color:'var(--bg)',border:'none',borderRadius:'6px',fontSize:'0.65rem',fontWeight:700,cursor:'pointer'}}>{downloading?'...':'[ SAVE CARD ]'}</button><button onClick={shareTwitter} className="mono" style={{flex:1,padding:'0.7rem',background:'transparent',color:'#fff',border:'1px solid var(--border)',borderRadius:'6px',fontSize:'0.65rem',fontWeight:700,cursor:'pointer'}}>[ SHARE ]</button></div>
+
+{profile.incomeSources&&profile.incomeSources.length>0&&<IncomeAnalysisCard incomeSources={profile.incomeSources} monthlyIncome={profile.monthly.income}/>}
+
+{profile.budgetReality&&<BudgetRealityCard budgetReality={profile.budgetReality} monthlyIncome={profile.monthly.income}/>}
 
 {decisionScore&&<DecisionScoreCard decisionScore={decisionScore} color={archetype.color}/>}
 
