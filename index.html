@@ -380,6 +380,8 @@ const MERCHANT_DB={
 'cashback':{name:'Cashback',category:'Refund',isSubscription:false}
 };
 
+// Essential/non-discretionary categories — for behavioral pattern analysis
+const ESSENTIAL_CATEGORIES=new Set(['Bills','Groceries','Transport','Health','Education','Debt Payments']);
 
 // ARCHETYPES — 10 distinct money personalities
 const ARCHETYPES={
@@ -508,6 +510,10 @@ allTx.push(...txs);
 
 allTx.sort((a,b)=>(a.date||0)-(b.date||0));
 
+// Filter to last 4 months for accurate behavioral analysis
+const _datedAll=allTx.filter(tx=>tx.date);
+if(_datedAll.length>=2){const _latest=new Date(Math.max(..._datedAll.map(tx=>tx.date.getTime())));const _cutoff=new Date(_latest);_cutoff.setMonth(_cutoff.getMonth()-4);const _keep=allTx.filter(tx=>!tx.date||tx.date>=_cutoff);if(_keep.length>=5){allTx.length=0;allTx.push(..._keep)}}
+
 // Step 2: Local merchant identification (first pass)
 onStatus?.('Identifying merchants...');
 let enriched=allTx.map(tx=>this.enrichTransaction(tx));
@@ -581,13 +587,11 @@ const idx=(cat.index||0)-1;
 if(idx>=0&&idx<batch.length){
 const tx=batch[idx];
 const claudeCat=normaliseCategory(cat.category);
-// Only override local enrichment if local confidence was low (category was 'Other')
-if(tx.confidence==='high'&&tx.category!=='Other'){
-// Keep local enrichment but let Claude fill in merchant name if we have a generic one
-if(cat.merchant&&tx.merchant==='Unknown')tx.merchant=cat.merchant;
-}else{
-// Normalize merchant name to title case to prevent duplicates like "AMERICAN Express" vs "American Express"
-if(cat.merchant){const nm=cat.merchant.trim();tx.merchant=nm.split(/\s+/).map(w=>w.charAt(0).toUpperCase()+w.slice(1).toLowerCase()).join(' ')}
+tx._claudeVerified=true;
+// Always let Claude refine categorisation for better first-load accuracy
+if(cat.merchant){const nm=cat.merchant.trim();if(tx.merchant==='Unknown'||tx.confidence!=='high')tx.merchant=nm.split(/\s+/).map(w=>w.charAt(0).toUpperCase()+w.slice(1).toLowerCase()).join(' ')}
+// Use Claude's category if it's not 'Other' or local was also 'Other'
+if(claudeCat!=='Other'||tx.category==='Other'){
 tx.category=claudeCat;
 if(typeof cat.isSubscription==='boolean')tx.isSubscription=cat.isSubscription;
 tx.isDebt=claudeCat==='Debt Payments';
@@ -595,8 +599,9 @@ tx.isIncome=claudeCat==='Income';
 tx.isRefund=claudeCat==='Refund';
 tx.isSavings=claudeCat==='Savings';
 tx.isTransfer=claudeCat==='Transfers'||claudeCat==='Savings';
+}
 // Preserve subcategory for debt if Claude identified it
-if(claudeCat==='Debt Payments'&&!tx.subcategory){
+if(tx.category==='Debt Payments'&&!tx.subcategory){
 const desc=tx.descNorm||'';
 if(['klarna','clearpay','afterpay','zilch','laybuy'].some(b=>desc.includes(b)))tx.subcategory='BNPL';
 else if(['amex','american express','barclaycard','capital one','capitalone','mbna','aqua','vanquis'].some(b=>desc.includes(b)))tx.subcategory='Credit Card';
@@ -618,6 +623,13 @@ await Promise.all(group.map(async b=>{
 await processBatch(b);
 }));
 onStatus?.('Categorised '+(Math.min(g+CONCURRENCY,batches.length)*BATCH_SIZE)+' of '+toVerify.length+'...');
+}
+// Second pass: retry transactions Claude missed or left as 'Other'
+const unverified=toVerify.filter(tx=>!tx._claudeVerified||tx.category==='Other');
+if(unverified.length>0&&unverified.length<=100){
+onStatus?.('Verifying '+unverified.length+' remaining transactions...');
+const retryBatches=[];for(let i=0;i<unverified.length;i+=BATCH_SIZE)retryBatches.push(unverified.slice(i,i+BATCH_SIZE));
+for(const batch of retryBatches){await processBatch(batch,1)}
 }
 return enrichedTxs;
 }
@@ -751,16 +763,29 @@ const byMerch={};
 spending.forEach(tx=>{if(!tx.merchant)return;if(!byMerch[tx.merchant])byMerch[tx.merchant]={total:0,count:0};byMerch[tx.merchant].total+=Math.abs(tx.amount);byMerch[tx.merchant].count++});
 const topMerchants=Object.entries(byMerch).map(([merchant,d])=>({merchant,total:Math.round(d.total),count:d.count})).sort((a,b)=>b.total-a.total).slice(0,10);
 
-// Income analysis — frequency, sources, amounts
+// Income analysis — find primary income source carefully
 const incomeBySource={};
-income.forEach(tx=>{const n=tx.descNorm||'';const key=n.split(' ').slice(0,2).join(' ')||'unknown';if(!incomeBySource[key])incomeBySource[key]={total:0,count:0,amounts:[],dates:[],merchant:tx.merchant||key};incomeBySource[key].total+=tx.amount;incomeBySource[key].count++;incomeBySource[key].amounts.push(tx.amount);if(tx.date)incomeBySource[key].dates.push(tx.date)});
+const salaryKeywords=['salary','wages','payroll','pay from','monthly pay','net pay','direct deposit'];
+income.forEach(tx=>{const n=tx.descNorm||'';
+const isSalary=salaryKeywords.some(p=>n.includes(p));
+const key=isSalary?'_salary_':n.split(' ').filter(w=>w.length>2).slice(0,2).join(' ')||'unknown';
+if(!incomeBySource[key])incomeBySource[key]={total:0,count:0,amounts:[],dates:[],merchant:isSalary?'Salary/Wages':(tx.merchant||key),isSalary};
+incomeBySource[key].total+=tx.amount;incomeBySource[key].count++;incomeBySource[key].amounts.push(tx.amount);if(tx.date)incomeBySource[key].dates.push(tx.date)});
+// Also detect large regular credits (>£500, appearing 2+ times monthly) as missed income
+const largeCreds=txs.filter(tx=>tx.amount>500&&!tx.isIncome&&!tx.isRefund&&!tx.isTransfer&&tx.date);
+const credByKey={};
+largeCreds.forEach(tx=>{const key=tx.descNorm?.split(' ').filter(w=>w.length>2).slice(0,2).join(' ')||'unknown';if(!credByKey[key])credByKey[key]={total:0,count:0,dates:[],merchant:tx.merchant||key};credByKey[key].total+=tx.amount;credByKey[key].count++;credByKey[key].dates.push(tx.date)});
+for(const[key,src] of Object.entries(credByKey)){
+if(src.count>=2&&!incomeBySource[key]){src.dates.sort((a,b)=>a-b);const ints=[];for(let i=1;i<src.dates.length;i++){const d=Math.round((src.dates[i]-src.dates[i-1])/(1000*60*60*24));if(d>0)ints.push(d)}
+if(ints.length>0){const avg=ints.reduce((a,b)=>a+b,0)/ints.length;if(avg>20&&avg<45){incomeBySource[key]={...src,amounts:largeCreds.filter(tx=>(tx.descNorm?.split(' ').filter(w=>w.length>2).slice(0,2).join(' ')||'unknown')===key).map(tx=>tx.amount),isSalary:false}}}}}
+const _calcFreq=(dates)=>{if(dates.length<2)return'irregular';dates.sort((a,b)=>a-b);const ints=[];for(let i=1;i<dates.length;i++){const d=Math.round((dates[i]-dates[i-1])/(1000*60*60*24));if(d>0)ints.push(d)};if(!ints.length)return'irregular';const avg=ints.reduce((a,b)=>a+b,0)/ints.length;return avg<10?'weekly':avg<18?'fortnightly':avg<45?'monthly':'irregular'};
 const incomeSources=Object.values(incomeBySource).map(src=>{
-let frequency='irregular';
-if(src.dates.length>=2){src.dates.sort((a,b)=>a-b);const intervals=[];for(let i=1;i<src.dates.length;i++){const days=Math.round((src.dates[i]-src.dates[i-1])/(1000*60*60*24));if(days>0)intervals.push(days)}
-if(intervals.length>0){const avgInterval=intervals.reduce((a,b)=>a+b,0)/intervals.length;frequency=avgInterval<10?'weekly':avgInterval<18?'fortnightly':avgInterval<45?'monthly':'irregular'}}
+const frequency=_calcFreq(src.dates);
 const avgAmount=Math.round(src.total/src.count);
-return{source:src.merchant,frequency,avgAmount,total:Math.round(src.total),count:src.count,monthly:mo(src.total)}
+return{source:src.merchant,frequency,avgAmount,total:Math.round(src.total),count:src.count,monthly:mo(src.total),isPrimary:false,isSalary:src.isSalary||false}
 }).sort((a,b)=>b.total-a.total);
+// Mark primary income source — salary first, then largest regular source
+if(incomeSources.length>0){const primary=incomeSources.find(s=>s.isSalary)||incomeSources.find(s=>s.frequency==='monthly'&&s.monthly>500)||incomeSources[0];if(primary){primary.isPrimary=true;primary.source=primary.isSalary?'Primary Income (Salary)':primary.source+' (Primary)'}}
 const incomeStreams=incomeSources.length;
 
 // Non-discretionary vs discretionary split
@@ -778,16 +803,30 @@ nonDiscretionary.items.sort((a,b)=>b.monthly-a.monthly);
 discretionary.items.sort((a,b)=>b.monthly-a.monthly);
 const leftToDecide=mo(totalIncome)-nonDiscretionary.total;
 
+// Financial advisor suggestions for people in debt distress
+const totalMonthlyNeeds=nonDiscretionary.total+discretionary.total;
+const monthlyInc=mo(totalIncome);
+const financialAdvisorTips=[];
+if(debtPay.length>0&&monthlyInc>0&&monthlyInc<totalMonthlyNeeds){
+const shortfall=totalMonthlyNeeds-monthlyInc;
+financialAdvisorTips.push({type:'shortfall',title:'Your expenses exceed your income',text:'You are spending £'+shortfall+' more per month than you earn. This is unsustainable and will deepen debt over time.'});
+if(discretionary.total>100)financialAdvisorTips.push({type:'cut',title:'Reduce lifestyle spending first',text:'Your lifestyle spending is £'+discretionary.total+'/mo. Cutting this by 50% frees up £'+Math.round(discretionary.total*0.5)+'/mo toward essentials and debt.'});
+if(debtPay.length>=2)financialAdvisorTips.push({type:'consolidate',title:'Consider debt consolidation',text:'You have '+debtPay.length+' debt payments totalling £'+Math.round(debtTotal)+'/mo. A consolidation loan at a lower rate could reduce monthly payments and simplify repayment.'});
+financialAdvisorTips.push({type:'help',title:'Speak to a free debt advisor',text:'StepChange (0800 138 1111) and Citizens Advice offer free, confidential debt advice. They can negotiate with creditors and set up manageable repayment plans.'});
+if(monthlyInc<nonDiscretionary.total)financialAdvisorTips.push({type:'crisis',title:'Priority bills first',text:'Your income doesn\'t cover non-negotiable costs. Focus on rent/mortgage, council tax, and energy first — these have the most serious consequences if missed. Contact creditors proactively.'});
+}
+
 return{
 transactionCount:txs.length,monthSpan:months,
 monthly:{income:mo(totalIncome),spending:mo(totalSpending),surplus:mo(surplus),subscriptions:Math.round(subTotal),debtPayments:Math.round(debtTotal),foodDelivery:mo(byCat['Food Delivery']?.total||0),shopping:mo(byCat['Shopping']?.total||0),entertainment:mo(byCat['Entertainment']?.total||0),groceries:mo(byCat['Groceries']?.total||0),transport:mo(byCat['Transport']?.total||0),eatingOut:mo(byCat['Eating Out']?.total||0),health:mo(byCat['Health']?.total||0),travel:mo(byCat['Travel']?.total||0),charity:mo(byCat['Charity']?.total||0),education:mo(byCat['Education']?.total||0)},
-metrics:{savingsRate:totalIncome>0?Math.round((surplus/totalIncome)*100):0,subscriptionCount:subs.length,debtAccountCount:debtPay.length,creditCardCount:creditCards.length,bnplCount:bnpl.length,streamingCount:streaming.length},
+metrics:{savingsRate:totalIncome>0?Math.round((surplus/totalIncome)*100):(totalSpending>0?-100:0),subscriptionCount:subs.length,debtAccountCount:debtPay.length,creditCardCount:creditCards.length,bnplCount:bnpl.length,streamingCount:streaming.length},
 // Spending trend: compare last 30 days vs overall monthly average
 spendingTrend:this.calcSpendingTrend(spending,months),
 // Income analysis
 incomeSources,
 // Non-discretionary vs discretionary
 budgetReality:{nonDiscretionary,discretionary,leftToDecide},
+financialAdvisorTips,
 categories,topMerchants,recurring,subscriptions:subs,debtPayments:debtPay,incomeStreams
 };
 }
@@ -886,11 +925,17 @@ if(ratio>1.3){patterns.push({pattern:'weekend_premium',text:'Your weekend spendi
 
 // 3. Hidden subscriptions — merchants appearing 8+ times, excluding person-to-person transfers
 const byMerch={};
-spending.forEach(tx=>{if(!tx.merchant||tx.isSubscription||tx.category==='Transfers'||tx.category==='Debt Payments')return;if(this._isLikelyPersonName(tx.merchant))return;if(!byMerch[tx.merchant])byMerch[tx.merchant]={count:0,total:0};byMerch[tx.merchant].count++;byMerch[tx.merchant].total+=Math.abs(tx.amount)});
+spending.forEach(tx=>{if(!tx.merchant||tx.isSubscription||tx.category==='Transfers'||tx.category==='Debt Payments')return;if(this._isLikelyPersonName(tx.merchant))return;if(!byMerch[tx.merchant])byMerch[tx.merchant]={count:0,total:0,category:tx.category};byMerch[tx.merchant].count++;byMerch[tx.merchant].total+=Math.abs(tx.amount)});
 const months=Math.max(1,txs.filter(tx=>tx.date).length>=2?((Math.max(...txs.filter(tx=>tx.date).map(tx=>tx.date.getTime()))-Math.min(...txs.filter(tx=>tx.date).map(tx=>tx.date.getTime())))/(1000*60*60*24*30.44)):1);
 for(const[merchant,data]of Object.entries(byMerch)){
-if(data.count>=8){const monthly=Math.round(data.total/months);patterns.push({pattern:'hidden_subscription',text:merchant+' appears '+data.count+' times \u2014 a hidden \u00a3'+monthly+'/mo habit',detail:'That is \u00a3'+(monthly*12)+'/yr on what is effectively a regular commitment',severity:monthly>50?'high':'medium',merchant,monthlyAmount:monthly})}
-}
+if(data.count>=8){const monthly=Math.round(data.total/months);
+const isEssential=ESSENTIAL_CATEGORIES.has(data.category);
+if(isEssential){
+// Essential spending (transport, groceries, bills) — suggest review only if very high, lower severity
+if(monthly>100){patterns.push({pattern:'essential_review',text:merchant+': £'+monthly+'/mo on '+data.category.toLowerCase()+' (essential)',detail:'This is a necessary expense but worth reviewing if the amount seems high. Consider if there are more cost-effective alternatives.',severity:'low',merchant,monthlyAmount:monthly,isEssential:true})}
+}else{
+patterns.push({pattern:'hidden_subscription',text:merchant+' appears '+data.count+' times \u2014 a hidden \u00a3'+monthly+'/mo habit',detail:'That is \u00a3'+(monthly*12)+'/yr on what is effectively a regular commitment',severity:monthly>50?'high':'medium',merchant,monthlyAmount:monthly,isEssential:false})}
+}}
 
 // 4. Late-month squeeze — spending drops in last 5 days before typical payday
 if(income.length>=2){
@@ -911,8 +956,8 @@ spending.filter(tx=>tx.category==='Shopping').forEach(tx=>{const key=tx.date.toD
 const clusters=Object.values(byDay).filter(d=>d.length>=3);
 if(clusters.length>=2){const avgCluster=Math.round(clusters.reduce((s,c)=>s+c.reduce((t,tx)=>t+Math.abs(tx.amount),0),0)/clusters.length);patterns.push({pattern:'impulse_cluster',text:clusters.length+' shopping spree days detected',detail:'You average \u00a3'+avgCluster+' on days with 3+ shopping transactions',severity:avgCluster>100?'high':'medium'})}
 
-// Sort by severity, then by monetary impact
-return patterns.sort((a,b)=>{const sev={high:3,medium:2,low:1};return(sev[b.severity]||0)-(sev[a.severity]||0)}).slice(0,4);
+// Sort: non-essentials first by severity, essentials last (suggest review last)
+return patterns.sort((a,b)=>{if(a.isEssential&&!b.isEssential)return 1;if(!a.isEssential&&b.isEssential)return -1;const sev={high:3,medium:2,low:1};return(sev[b.severity]||0)-(sev[a.severity]||0)}).slice(0,5);
 }
 
 // DECISION QUALITY SCORE — 0-100 composite measure
@@ -1135,13 +1180,15 @@ return(<div style={{minHeight:'100vh',display:'flex',flexDirection:'column',alig
 // CARD
 const ResultCard=React.forwardRef(({result},ref)=>{const{archetype,profile,traits,potentialSavings}=result;const savingsTotal=potentialSavings.total;const ascii=ARCHETYPE_ASCII[archetype.key]||ARCHETYPE_ASCII.balanced_realist;const topCat=profile.categories[0]?.name||'Lifestyle';return(<div ref={ref} style={{width:'320px',background:'#050505',borderRadius:'12px',padding:'24px',position:'relative',overflow:'hidden',border:'1px solid '+archetype.color+'30'}}><div style={{position:'absolute',inset:0,background:'radial-gradient(circle at 50% 20%,'+archetype.color+'10 0%,transparent 50%)',pointerEvents:'none'}}/><div style={{position:'relative',zIndex:1}}><pre className="mono" style={{fontSize:'10px',lineHeight:'12px',color:archetype.color,textAlign:'center',marginBottom:'16px',whiteSpace:'pre'}}>{ascii.split('\\n').join('\n')}</pre><div style={{textAlign:'center',marginBottom:'16px'}}><span style={{fontSize:'2rem',display:'block',marginBottom:'4px'}}>{archetype.emoji}</span><h2 className="mono" style={{fontSize:'0.85rem',fontWeight:700,color:'#fff',marginBottom:'4px'}}>{archetype.name}</h2><p style={{fontSize:'0.65rem',color:archetype.color,fontStyle:'italic'}}>"{archetype.vibe}"</p></div>{traits.length>0&&(<div style={{display:'flex',flexWrap:'wrap',justifyContent:'center',gap:'4px',marginBottom:'16px'}}>{traits.slice(0,3).map((t,i)=>(<span key={i} style={{fontSize:'0.6rem',padding:'2px 8px',background:'rgba(255,255,255,0.05)',borderRadius:'10px',color:'var(--dim)'}}>{t.emoji} {t.text}</span>))}</div>)}<div style={{background:'rgba(255,255,255,0.02)',border:'1px solid rgba(255,255,255,0.04)',borderRadius:'8px',padding:'14px',marginBottom:'14px'}}><div style={{display:'flex',justifyContent:'space-between',marginBottom:'8px'}}><span className="mono" style={{fontSize:'0.6rem',color:'var(--dim)'}}>Subscriptions</span><span className="mono" style={{fontSize:'0.6rem',color:'#fff'}}>{profile.metrics.subscriptionCount} (£{profile.monthly.subscriptions}/mo)</span></div>{profile.metrics.debtAccountCount>0&&(<div style={{display:'flex',justifyContent:'space-between',marginBottom:'8px'}}><span className="mono" style={{fontSize:'0.6rem',color:'var(--dim)'}}>Debt Payments</span><span className="mono" style={{fontSize:'0.6rem',color:'var(--coral)'}}>{profile.metrics.debtAccountCount} (£{profile.monthly.debtPayments}/mo)</span></div>)}<div style={{display:'flex',justifyContent:'space-between'}}><span className="mono" style={{fontSize:'0.6rem',color:'var(--dim)'}}>Top Category</span><span className="mono" style={{fontSize:'0.6rem',color:'#fff'}}>{topCat}</span></div><div style={{textAlign:'center',paddingTop:'12px',marginTop:'12px',borderTop:'1px solid rgba(255,255,255,0.04)'}}><p className="mono" style={{fontSize:'0.5rem',color:'#444',marginBottom:'4px'}}>POTENTIAL SAVINGS</p><p className="mono" style={{fontSize:'1.6rem',fontWeight:700,color:archetype.color}}>£{savingsTotal.toLocaleString()}</p><p className="mono" style={{fontSize:'0.45rem',color:'#333'}}>per year</p></div></div><div style={{display:'flex',justifyContent:'space-between',alignItems:'center',borderTop:'1px solid rgba(255,255,255,0.04)',paddingTop:'12px'}}><span className="mono" style={{fontSize:'0.8rem',fontWeight:700,color:'#fff'}}>BOCY</span><span className="mono" style={{fontSize:'0.45rem',color:'#444'}}>bocy.io/personality</span></div></div></div>)});
 
-// DECISION SCORE COMPONENT
+// DECISION SCORE COMPONENT — clearer explanation of what each dimension means
 const DecisionScoreCard=({decisionScore,color})=>{const{score,verdict,breakdown}=decisionScore;
 const scoreColor=score>=75?'var(--mint)':score>=50?'var(--accent)':'var(--coral)';
-return(<div className="card-box slide-up" style={{border:'1px solid '+scoreColor+'25'}}><div className="section-title">Decision Quality Score</div>
-<div style={{textAlign:'center',marginBottom:'1.25rem'}}><div style={{position:'relative',width:'100px',height:'100px',margin:'0 auto 0.75rem'}}><svg viewBox="0 0 100 100" style={{transform:'rotate(-90deg)'}}><circle cx="50" cy="50" r="42" fill="none" stroke="rgba(255,255,255,0.04)" strokeWidth="6"/><circle cx="50" cy="50" r="42" fill="none" stroke={scoreColor} strokeWidth="6" strokeLinecap="round" strokeDasharray={Math.round(264*(score/100))+' 264'}/></svg><span className="mono" style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',fontSize:'1.8rem',fontWeight:700,color:scoreColor}}>{score}</span></div>
-<p style={{color:'var(--text2)',fontSize:'0.85rem',lineHeight:1.6}}>{verdict}</p></div>
-<div style={{display:'flex',flexDirection:'column',gap:'0.6rem'}}>{breakdown.map((d,i)=>(<div key={i}><div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'0.25rem'}}><span style={{color:'var(--text2)',fontSize:'0.8rem'}}>{d.label}</span><span className="mono" style={{fontSize:'0.75rem',color:d.score>=70?'var(--mint)':d.score>=40?'var(--accent)':'var(--coral)'}}>{d.score}/100</span></div><div style={{height:'4px',background:'rgba(255,255,255,0.04)',borderRadius:'2px',overflow:'hidden'}}><div style={{height:'100%',width:d.score+'%',background:d.score>=70?'var(--mint)':d.score>=40?'var(--accent)':'var(--coral)',borderRadius:'2px',transition:'width 0.5s'}}/></div><p style={{color:'var(--muted)',fontSize:'0.7rem',marginTop:'0.15rem'}}>{d.detail}</p></div>))}</div></div>)};
+const scoreLabel=score>=80?'Excellent':score>=65?'Good':score>=50?'Fair':score>=35?'Needs Work':'Critical';
+return(<div className="card-box slide-up" style={{border:'1px solid '+scoreColor+'25'}}><div className="section-title">How Well You Manage Money</div>
+<p style={{color:'var(--dim)',fontSize:'0.78rem',marginBottom:'1.25rem'}}>This score measures how intentionally you spend, save, and manage debt — not how much you earn.</p>
+<div style={{textAlign:'center',marginBottom:'1.25rem'}}><div style={{position:'relative',width:'110px',height:'110px',margin:'0 auto 0.75rem'}}><svg viewBox="0 0 100 100" style={{transform:'rotate(-90deg)'}}><circle cx="50" cy="50" r="42" fill="none" stroke="rgba(255,255,255,0.04)" strokeWidth="6"/><circle cx="50" cy="50" r="42" fill="none" stroke={scoreColor} strokeWidth="6" strokeLinecap="round" strokeDasharray={Math.round(264*(score/100))+' 264'}/></svg><div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center'}}><span className="mono" style={{fontSize:'1.8rem',fontWeight:700,color:scoreColor}}>{score}</span><span className="mono" style={{fontSize:'0.6rem',color:scoreColor,marginTop:'-2px'}}>{scoreLabel}</span></div></div>
+<p style={{color:'var(--text2)',fontSize:'0.85rem',lineHeight:1.6,maxWidth:'320px',margin:'0 auto'}}>{verdict}</p></div>
+<div style={{display:'flex',flexDirection:'column',gap:'0.75rem'}}>{breakdown.map((d,i)=>{const dimColor=d.score>=70?'var(--mint)':d.score>=40?'var(--accent)':'var(--coral)';return(<div key={i} style={{padding:'0.6rem',background:'rgba(255,255,255,0.02)',borderRadius:'6px'}}><div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'0.3rem'}}><span style={{color:'#fff',fontSize:'0.85rem',fontWeight:500}}>{d.label}</span><span className="mono" style={{fontSize:'0.8rem',fontWeight:700,color:dimColor}}>{d.score}<span style={{fontSize:'0.6rem',color:'var(--muted)'}}>/100</span></span></div><div style={{height:'5px',background:'rgba(255,255,255,0.04)',borderRadius:'3px',overflow:'hidden',marginBottom:'0.3rem'}}><div style={{height:'100%',width:d.score+'%',background:dimColor,borderRadius:'3px',transition:'width 0.5s'}}/></div><p style={{color:'var(--dim)',fontSize:'0.75rem',lineHeight:1.5}}>{d.detail}</p></div>)})}</div></div>)};
 
 // MONEY MOVES COMPONENT
 const MoneyMovesCard=({moves})=>{if(!moves||moves.length===0)return null;
@@ -1158,12 +1205,18 @@ return(<div className="card-box slide-up"><div className="section-title">Your Pl
 <p style={{color:'var(--text2)',fontSize:'0.88rem',lineHeight:1.7,marginBottom:'1.25rem'}}>{playbook.narrative}</p>
 <div style={{display:'flex',flexDirection:'column',gap:'0.85rem'}}>{playbook.strategies.map((s,i)=>(<div key={i} style={{padding:'0.75rem',background:'rgba(255,255,255,0.02)',borderRadius:'6px',borderLeft:'3px solid '+archetype.color}}><p style={{color:'#fff',fontSize:'0.85rem',fontWeight:600,marginBottom:'0.25rem'}}>{s.title}</p><p style={{color:'var(--dim)',fontSize:'0.82rem',lineHeight:1.6}}>{s.text}</p></div>))}</div></div>)};
 
-// BEHAVIORAL PATTERNS COMPONENT
+// FINANCIAL ADVISOR COMPONENT — for users in debt distress
+const FinancialAdvisorCard=({tips})=>{if(!tips||tips.length===0)return null;
+const typeIcon={shortfall:'⚠️',cut:'✂️',consolidate:'🔗',help:'📞',crisis:'🚨'};
+return(<div className="card-box slide-up" style={{border:'1px solid rgba(232,114,114,0.2)',background:'linear-gradient(180deg,rgba(232,114,114,0.04) 0%,var(--surface) 100%)'}}><div className="section-title" style={{color:'var(--coral)'}}>Financial Health Check</div><p style={{color:'var(--dim)',fontSize:'0.78rem',marginBottom:'1rem'}}>Based on your income vs expenses, here are some steps to consider</p>
+<div style={{display:'flex',flexDirection:'column',gap:'0.85rem'}}>{tips.map((t,i)=>(<div key={i} style={{padding:'0.75rem',background:'rgba(255,255,255,0.02)',borderRadius:'6px',borderLeft:'3px solid '+(t.type==='crisis'?'var(--coral)':t.type==='help'?'var(--mint)':'var(--accent)')}}><div style={{display:'flex',alignItems:'center',gap:'0.5rem',marginBottom:'0.3rem'}}><span style={{fontSize:'1rem'}}>{typeIcon[t.type]||'💡'}</span><p style={{color:'#fff',fontSize:'0.88rem',fontWeight:600}}>{t.title}</p></div><p style={{color:'var(--dim)',fontSize:'0.82rem',lineHeight:1.6,marginLeft:'1.5rem'}}>{t.text}</p></div>))}</div></div>)};
+
+// BEHAVIORAL PATTERNS COMPONENT — essentials flagged differently
 const BehavioralPatternsCard=({patterns})=>{if(!patterns||patterns.length===0)return null;
 const sevColor={high:'var(--coral)',medium:'var(--accent)',low:'var(--dim)'};
-const patternIcon={payday_splurge:'📅',weekend_premium:'📆',hidden_subscription:'🔄',late_month_squeeze:'📉',impulse_cluster:'⚡'};
+const patternIcon={payday_splurge:'📅',weekend_premium:'📆',hidden_subscription:'🔄',late_month_squeeze:'📉',impulse_cluster:'⚡',essential_review:'🏷️'};
 return(<div className="card-box slide-up" style={{border:'1px solid rgba(178,114,232,0.15)'}}><div className="section-title" style={{color:'var(--lavender)'}}>Behavioral Patterns</div><p style={{color:'var(--dim)',fontSize:'0.78rem',marginBottom:'1rem'}}>What your transaction timing reveals</p>
-<div style={{display:'flex',flexDirection:'column',gap:'0.85rem'}}>{patterns.map((p,i)=>(<div key={i} style={{display:'flex',gap:'0.75rem',alignItems:'flex-start'}}><span style={{fontSize:'1.1rem',marginTop:'0.1rem'}}>{patternIcon[p.pattern]||'📊'}</span><div style={{flex:1}}><p style={{color:'#fff',fontSize:'0.88rem',fontWeight:500,marginBottom:'0.2rem'}}>{p.text}</p><p style={{color:'var(--dim)',fontSize:'0.78rem',lineHeight:1.5}}>{p.detail}</p></div><span className="mono" style={{fontSize:'0.6rem',color:sevColor[p.severity],padding:'0.15rem 0.4rem',background:p.severity==='high'?'rgba(232,114,114,0.1)':'rgba(232,200,114,0.08)',borderRadius:'4px',whiteSpace:'nowrap'}}>{p.severity}</span></div>))}</div></div>)};
+<div style={{display:'flex',flexDirection:'column',gap:'0.85rem'}}>{patterns.map((p,i)=>(<div key={i} style={{display:'flex',gap:'0.75rem',alignItems:'flex-start'}}><span style={{fontSize:'1.1rem',marginTop:'0.1rem'}}>{patternIcon[p.pattern]||'📊'}</span><div style={{flex:1}}><p style={{color:'#fff',fontSize:'0.88rem',fontWeight:500,marginBottom:'0.2rem'}}>{p.text}</p><p style={{color:'var(--dim)',fontSize:'0.78rem',lineHeight:1.5}}>{p.detail}</p></div>{p.isEssential?(<span className="mono" style={{fontSize:'0.6rem',color:'var(--mint)',padding:'0.15rem 0.4rem',background:'rgba(114,232,176,0.1)',borderRadius:'4px',whiteSpace:'nowrap'}}>essential</span>):(<span className="mono" style={{fontSize:'0.6rem',color:sevColor[p.severity],padding:'0.15rem 0.4rem',background:p.severity==='high'?'rgba(232,114,114,0.1)':'rgba(232,200,114,0.08)',borderRadius:'4px',whiteSpace:'nowrap'}}>{p.severity}</span>)}</div>))}</div></div>)};
 
 // INCOME ANALYSIS COMPONENT
 const IncomeAnalysisCard=({incomeSources,monthlyIncome})=>{if(!incomeSources||incomeSources.length===0)return null;
@@ -1171,7 +1224,7 @@ const freqLabel={weekly:'Weekly',fortnightly:'Fortnightly',monthly:'Monthly',irr
 const freqColor={weekly:'var(--sky)',fortnightly:'var(--lavender)',monthly:'var(--mint)',irregular:'var(--dim)'};
 return(<div className="card-box slide-up" style={{border:'1px solid rgba(114,232,176,0.15)'}}><div className="section-title" style={{color:'var(--mint)'}}>Your Income</div>
 <div style={{textAlign:'center',marginBottom:'1.25rem',paddingBottom:'1rem',borderBottom:'1px solid var(--border)'}}><p className="mono" style={{fontSize:'2rem',fontWeight:700,color:'var(--mint)'}}>£{monthlyIncome.toLocaleString()}</p><p style={{fontSize:'0.8rem',color:'var(--dim)'}}>total monthly income</p></div>
-<div style={{display:'flex',flexDirection:'column',gap:'0.85rem'}}>{incomeSources.map((src,i)=>(<div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'0.6rem',background:'rgba(255,255,255,0.02)',borderRadius:'6px'}}><div><p style={{color:'#fff',fontSize:'0.88rem',fontWeight:500}}>{src.source}</p><span className="mono" style={{fontSize:'0.65rem',color:freqColor[src.frequency],background:freqColor[src.frequency]+'15',padding:'0.1rem 0.4rem',borderRadius:'3px'}}>{freqLabel[src.frequency]||src.frequency}</span></div><div style={{textAlign:'right'}}><p className="mono" style={{color:'var(--mint)',fontSize:'0.9rem',fontWeight:600}}>£{src.avgAmount.toLocaleString()}</p><p style={{color:'var(--muted)',fontSize:'0.7rem'}}>{src.frequency==='weekly'?'per week':src.frequency==='fortnightly'?'every 2 weeks':'per month'}</p></div></div>))}</div></div>)};
+<div style={{display:'flex',flexDirection:'column',gap:'0.85rem'}}>{incomeSources.map((src,i)=>(<div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'0.6rem',background:src.isPrimary?'rgba(114,232,176,0.06)':'rgba(255,255,255,0.02)',borderRadius:'6px',border:src.isPrimary?'1px solid rgba(114,232,176,0.15)':'1px solid transparent'}}><div><p style={{color:'#fff',fontSize:'0.88rem',fontWeight:src.isPrimary?600:500}}>{src.source}</p><div style={{display:'flex',gap:'0.4rem',alignItems:'center',marginTop:'0.15rem'}}><span className="mono" style={{fontSize:'0.65rem',color:freqColor[src.frequency],background:freqColor[src.frequency]+'15',padding:'0.1rem 0.4rem',borderRadius:'3px'}}>{freqLabel[src.frequency]||src.frequency}</span>{src.isPrimary&&<span className="mono" style={{fontSize:'0.55rem',color:'var(--mint)',background:'rgba(114,232,176,0.12)',padding:'0.1rem 0.4rem',borderRadius:'3px'}}>PRIMARY</span>}</div></div><div style={{textAlign:'right'}}><p className="mono" style={{color:'var(--mint)',fontSize:'0.9rem',fontWeight:600}}>£{src.avgAmount.toLocaleString()}</p><p style={{color:'var(--muted)',fontSize:'0.7rem'}}>{src.frequency==='weekly'?'per week':src.frequency==='fortnightly'?'every 2 weeks':'per month'}</p></div></div>))}</div></div>)};
 
 // BUDGET REALITY COMPONENT — non-discretionary vs what's left
 const BudgetRealityCard=({budgetReality,monthlyIncome})=>{if(!budgetReality)return null;
@@ -1213,11 +1266,14 @@ return(<div className="card-box slide-up" style={{border:'1px solid rgba(114,176
 <div style={{display:'flex',justifyContent:'space-between'}}><span className="mono" style={{fontSize:'0.72rem',color:'var(--dim)'}}>£{c.annual.toLocaleString()}</span><span className="mono" style={{fontSize:'0.72rem',color:'var(--sky)'}}>£{c.fiveYear.toLocaleString()}</span><span className="mono" style={{fontSize:'0.72rem',color:'var(--sky)',fontWeight:600}}>£{c.tenYear.toLocaleString()}</span></div>
 </div>))}</div></div>)};
 
-// RESULT
-const Result=({result})=>{const cardRef=useRef();const[downloading,setDownloading]=useState(false);const[email,setEmail]=useState('');const[emailStatus,setEmailStatus]=useState('idle');const[unlocked,setUnlocked]=useState(false);const{archetype,profile,traits,strengths,blindSpots,peerComparison,insights,potentialSavings,decisionScore,decisionStack,playbook,behavioralPatterns,compoundCosts}=result;
+// RESULT — Layout: visible cards > full-screen email gate > blurred premium cards (compound cost, strengths, blind spots, decision score)
+const Result=({result})=>{const cardRef=useRef();const[downloading,setDownloading]=useState(false);const[email,setEmail]=useState('');const[emailStatus,setEmailStatus]=useState('idle');const[unlocked,setUnlocked]=useState(false);const[showEmailGate,setShowEmailGate]=useState(false);const{archetype,profile,traits,strengths,blindSpots,insights,potentialSavings,decisionScore,decisionStack,playbook,behavioralPatterns,compoundCosts}=result;
 const downloadCard=async()=>{if(!cardRef.current)return;setDownloading(true);try{const canvas=await html2canvas(cardRef.current,{backgroundColor:'#050505',scale:3});const link=document.createElement('a');link.download='my-money-personality.png';link.href=canvas.toDataURL('image/png');link.click()}catch(e){console.error(e)}setDownloading(false)};
 const shareTwitter=()=>{const t='I am "'+archetype.name+'" '+archetype.emoji+'\n\n"'+archetype.vibe+'"\n\nMy decision score: '+decisionScore.score+'/100\n\nFind yours:';window.open('https://twitter.com/intent/tweet?text='+encodeURIComponent(t)+'&url='+encodeURIComponent('https://bocy.io/personality'),'_blank')};
-const submitEmail=async e=>{e.preventDefault();if(!email||emailStatus==='sending')return;setEmailStatus('sending');try{await fetch(CONFIG.googleScript,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,archetype:archetype.name,decisionScore:decisionScore.score,potentialSavings:potentialSavings.total,savingsRate:profile.metrics.savingsRate,subscriptionCount:profile.metrics.subscriptionCount,debtAccountCount:profile.metrics.debtAccountCount,traits:traits.map(t=>t.text).join(', '),timestamp:new Date().toISOString()})});setEmailStatus('done');setUnlocked(true)}catch{setEmailStatus('done');setUnlocked(true)}};
+const submitEmail=async e=>{e.preventDefault();if(!email||emailStatus==='sending')return;setEmailStatus('sending');try{await fetch(CONFIG.googleScript,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,archetype:archetype.name,decisionScore:decisionScore.score,potentialSavings:potentialSavings.total,savingsRate:profile.metrics.savingsRate,subscriptionCount:profile.metrics.subscriptionCount,debtAccountCount:profile.metrics.debtAccountCount,traits:traits.map(t=>t.text).join(', '),timestamp:new Date().toISOString()})});setEmailStatus('done');setUnlocked(true);setShowEmailGate(false)}catch{setEmailStatus('done');setUnlocked(true);setShowEmailGate(false)}};
+
+// Auto-show email gate when user scrolls past behavioral patterns
+useEffect(()=>{if(unlocked)return;const timer=setTimeout(()=>setShowEmailGate(true),8000);return()=>clearTimeout(timer)},[unlocked]);
 
 return(<div style={{minHeight:'100vh',padding:'5rem 1rem 3rem',position:'relative',zIndex:1}}><div style={{maxWidth:'500px',margin:'0 auto'}}>
 <div className="fade-in" style={{display:'flex',justifyContent:'center',marginBottom:'1.5rem'}}><ResultCard ref={cardRef} result={result}/></div>
@@ -1227,7 +1283,7 @@ return(<div style={{minHeight:'100vh',padding:'5rem 1rem 3rem',position:'relativ
 
 {profile.budgetReality&&<BudgetRealityCard budgetReality={profile.budgetReality} monthlyIncome={profile.monthly.income}/>}
 
-{decisionScore&&<DecisionScoreCard decisionScore={decisionScore} color={archetype.color}/>}
+{profile.financialAdvisorTips&&profile.financialAdvisorTips.length>0&&<FinancialAdvisorCard tips={profile.financialAdvisorTips}/>}
 
 {decisionStack&&decisionStack.length>0&&<MoneyMovesCard moves={decisionStack}/>}
 
@@ -1237,19 +1293,35 @@ return(<div style={{minHeight:'100vh',padding:'5rem 1rem 3rem',position:'relativ
 
 {behavioralPatterns&&behavioralPatterns.length>0&&<BehavioralPatternsCard patterns={behavioralPatterns}/>}
 
+{/* Full-screen email gate overlay */}
+{!unlocked&&showEmailGate&&(<div style={{position:'fixed',inset:0,zIndex:200,background:'rgba(10,10,10,0.92)',backdropFilter:'blur(12px)',display:'flex',alignItems:'center',justifyContent:'center',padding:'1.5rem',animation:'fadeIn .4s ease'}}>
+<div style={{maxWidth:'420px',width:'100%',textAlign:'center'}}>
+<pre className="mono" style={{fontSize:'0.5rem',lineHeight:1.4,color:'var(--accent)',marginBottom:'2rem',opacity:0.6}}>{`      ·  •  ·     ·  •  ·
+    •  ✦  •  ·  •  ✦  •
+  ·  •  ◉  ✦  ◉  •  ·
+    ✦  •  ◉  ◉  •  ✦`}</pre>
+<h2 style={{fontSize:'1.5rem',fontWeight:600,color:'#fff',marginBottom:'0.75rem',lineHeight:1.3}}>You're halfway there.</h2>
+<p style={{color:'var(--text2)',fontSize:'1rem',lineHeight:1.7,marginBottom:'0.5rem'}}>Your money personality is <span style={{color:archetype.color,fontWeight:600}}>{archetype.name}</span></p>
+<p style={{color:'var(--dim)',fontSize:'0.88rem',lineHeight:1.7,marginBottom:'2rem'}}>Join the waitlist to unlock your full analysis — compound costs, blind spots, strengths, and your decision quality score.</p>
+<form onSubmit={submitEmail} style={{marginBottom:'1.5rem'}}>
+<input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="your@email.com" required style={{width:'100%',padding:'1rem 1.25rem',background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:'10px',color:'#fff',fontSize:'0.95rem',outline:'none',marginBottom:'0.75rem',textAlign:'center'}}/>
+<button type="submit" disabled={emailStatus==='sending'} className="mono" style={{width:'100%',padding:'1rem',background:'var(--accent)',color:'var(--bg)',border:'none',borderRadius:'10px',fontSize:'0.85rem',fontWeight:700,cursor:'pointer',letterSpacing:'0.03em'}}>{emailStatus==='sending'?'Unlocking...':'[ UNLOCK FULL ANALYSIS ]'}</button>
+</form>
+<p style={{color:'var(--muted)',fontSize:'0.75rem',marginBottom:'1.5rem'}}>Free forever. No spam. Unsubscribe anytime.</p>
+<button onClick={()=>setShowEmailGate(false)} style={{background:'none',border:'none',color:'var(--muted)',fontSize:'0.8rem',cursor:'pointer',textDecoration:'underline',padding:'0.5rem'}}>Skip for now</button>
+</div></div>)}
+
+{/* Blurred premium section — compound cost downwards */}
 {!unlocked&&(<div className="slide-up" style={{position:'relative',marginTop:'0.5rem'}}>
 <div style={{filter:'blur(6px)',pointerEvents:'none',userSelect:'none',opacity:0.5}}>
 {compoundCosts&&compoundCosts.length>0&&<CompoundCostCard costs={compoundCosts}/>}
-<div className="card-box"><div className="section-title">Your Blind Spots</div><div style={{display:'flex',flexDirection:'column',gap:'0.75rem'}}>{blindSpots.length>0?blindSpots.slice(0,2).map((b,i)=>(<div key={i}><div style={{display:'flex',alignItems:'center',gap:'0.6rem',marginBottom:'0.2rem'}}><span style={{color:'var(--coral)',fontSize:'0.9rem'}}>⚠</span><span style={{color:'#fff',fontSize:'0.9rem',fontWeight:500}}>{b.text}</span></div><p style={{color:'var(--dim)',fontSize:'0.8rem',marginLeft:'1.5rem'}}>{b.detail}</p></div>)):<p style={{color:'var(--dim)',fontSize:'0.85rem'}}>Analysis available after unlock</p>}</div></div>
+<div className="card-box"><div className="section-title">Your Strengths</div><div style={{display:'flex',flexDirection:'column',gap:'0.6rem'}}>{strengths.length>0?strengths.slice(0,2).map((s,i)=>(<div key={i} style={{display:'flex',alignItems:'center',gap:'0.6rem'}}><span style={{color:'var(--mint)',fontSize:'0.9rem'}}>✦</span><span style={{color:'var(--text2)',fontSize:'0.9rem'}}>{s}</span></div>)):<p style={{color:'var(--dim)'}}>Analysis locked</p>}</div></div>
+<div className="card-box"><div className="section-title">Your Blind Spots</div><div style={{display:'flex',flexDirection:'column',gap:'0.75rem'}}>{blindSpots.length>0?blindSpots.slice(0,2).map((b,i)=>(<div key={i}><div style={{display:'flex',alignItems:'center',gap:'0.6rem',marginBottom:'0.2rem'}}><span style={{color:'var(--coral)',fontSize:'0.9rem'}}>⚠</span><span style={{color:'#fff',fontSize:'0.9rem',fontWeight:500}}>{b.text}</span></div></div>)):<p style={{color:'var(--dim)'}}>Analysis locked</p>}</div></div>
+{decisionScore&&<div className="card-box"><div className="section-title">How Well You Manage Money</div><div style={{textAlign:'center'}}><span className="mono" style={{fontSize:'2rem',fontWeight:700,color:'var(--accent)'}}>{decisionScore.score}/100</span></div></div>}
 </div>
 <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',zIndex:2}}>
-<div style={{background:'linear-gradient(135deg,rgba(232,200,114,0.12) 0%,rgba(178,114,232,0.12) 100%)',border:'1px solid rgba(232,200,114,0.25)',borderRadius:'14px',padding:'2rem 1.75rem',maxWidth:'360px',width:'90%',textAlign:'center',backdropFilter:'blur(4px)'}}>
-<p className="mono" style={{fontSize:'0.55rem',letterSpacing:'0.15em',color:'var(--accent)',marginBottom:'1rem',textTransform:'uppercase'}}>Full results locked</p>
-<h3 style={{fontSize:'1.15rem',fontWeight:600,color:'#fff',marginBottom:'0.6rem'}}>Unlock your full financial analysis</h3>
-<p style={{color:'var(--dim)',fontSize:'0.82rem',lineHeight:1.7,marginBottom:'1.25rem'}}>Join the waitlist to see compound costs, blind spots, strengths, peer comparison, and spending trends.</p>
-<form onSubmit={submitEmail} style={{display:'flex',gap:'0.5rem'}}><input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="your@email.com" required style={{flex:1,padding:'0.75rem 1rem',background:'rgba(0,0,0,0.5)',border:'1px solid var(--border)',borderRadius:'6px',color:'#fff',fontSize:'0.85rem',outline:'none'}}/><button type="submit" disabled={emailStatus==='sending'} className="mono" style={{padding:'0.75rem 1.25rem',background:'var(--accent)',color:'var(--bg)',border:'none',borderRadius:'6px',fontSize:'0.75rem',fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}}>{emailStatus==='sending'?'...':'UNLOCK'}</button></form>
-<p style={{color:'var(--muted)',fontSize:'0.7rem',marginTop:'0.75rem'}}>Free forever. No spam. Unsubscribe anytime.</p>
-</div></div></div>)}
+<button onClick={()=>setShowEmailGate(true)} className="mono" style={{padding:'1rem 2.5rem',background:'var(--accent)',color:'var(--bg)',border:'none',borderRadius:'10px',fontSize:'0.85rem',fontWeight:700,cursor:'pointer',boxShadow:'0 4px 24px rgba(232,200,114,0.3)'}}>[ UNLOCK FULL ANALYSIS ]</button>
+</div></div>)}
 
 {unlocked&&(<>
 {compoundCosts&&compoundCosts.length>0&&<CompoundCostCard costs={compoundCosts}/>}
@@ -1258,9 +1330,7 @@ return(<div style={{minHeight:'100vh',padding:'5rem 1rem 3rem',position:'relativ
 
 <div className="card-box slide-up"><div className="section-title">Your Blind Spots</div><div style={{display:'flex',flexDirection:'column',gap:'0.75rem'}}>{blindSpots.length>0?blindSpots.map((b,i)=>(<div key={i}><div style={{display:'flex',alignItems:'center',gap:'0.6rem',marginBottom:'0.2rem'}}><span style={{color:'var(--coral)',fontSize:'0.9rem'}}>⚠</span><span style={{color:'#fff',fontSize:'0.9rem',fontWeight:500}}>{b.text}</span></div><p style={{color:'var(--dim)',fontSize:'0.8rem',marginLeft:'1.5rem'}}>{b.detail}</p></div>)):<p style={{color:'var(--dim)',fontSize:'0.85rem'}}>No major blind spots detected</p>}</div></div>
 
-<div className="card-box slide-up"><div className="section-title">How You Compare (UK Average)</div><div style={{display:'flex',flexDirection:'column',gap:'0.75rem'}}>{peerComparison.map((p,i)=>(<div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><span style={{color:'var(--text2)',fontSize:'0.85rem'}}>{p.label}</span><div style={{display:'flex',alignItems:'center',gap:'0.5rem'}}><span className="mono" style={{color:'#fff',fontSize:'0.9rem',fontWeight:600}}>{p.value}{p.unit==='£/mo'?'':p.unit}</span>{p.unit==='£/mo'&&<span style={{color:'var(--dim)',fontSize:'0.75rem'}}>£/mo</span>}{p.diff!==0&&(<span className="mono" style={{fontSize:'0.7rem',color:p.higherIsGood?(p.isHigher?'var(--mint)':'var(--coral)'):(p.isHigher?'var(--coral)':'var(--mint)'),padding:'0.15rem 0.4rem',background:p.higherIsGood?(p.isHigher?'rgba(114,232,176,0.1)':'rgba(232,114,114,0.1)'):(p.isHigher?'rgba(232,114,114,0.1)':'rgba(114,232,176,0.1)'),borderRadius:'4px'}}>{p.diff>0?'+':''}{p.diff}%</span>)}</div></div>))}</div></div>
-
-{profile.spendingTrend&&(<div className="card-box slide-up"><div className="section-title">Spending Trend</div><div style={{display:'flex',alignItems:'center',gap:'0.75rem',marginBottom:'0.75rem'}}><span style={{fontSize:'1.5rem'}}>{profile.spendingTrend.direction==='up'?'📈':profile.spendingTrend.direction==='down'?'📉':'➡️'}</span><div><p style={{color:'#fff',fontSize:'0.95rem',fontWeight:500}}>Last 30 days: £{profile.spendingTrend.recentMonthTotal}</p><p style={{color:'var(--dim)',fontSize:'0.8rem'}}>vs £{profile.spendingTrend.averageMonthly}/mo average ({profile.spendingTrend.pctChange>0?'+':''}{profile.spendingTrend.pctChange}%)</p></div></div>{profile.spendingTrend.topRecentCategories.length>0&&(<div style={{display:'flex',gap:'0.4rem',flexWrap:'wrap'}}>{profile.spendingTrend.topRecentCategories.map((c,i)=>(<span key={i} className="trait-tag" style={{background:'rgba(114,176,232,0.08)',borderColor:'rgba(114,176,232,0.15)',color:'var(--sky)'}}>{c.name} £{c.total}</span>))}</div>)}</div>)}
+{decisionScore&&<DecisionScoreCard decisionScore={decisionScore} color={archetype.color}/>}
 
 <div className="slide-up" style={{background:'rgba(114,232,176,0.08)',border:'1px solid rgba(114,232,176,0.2)',borderRadius:'10px',padding:'1.5rem',marginTop:'0.5rem',textAlign:'center'}}><p style={{color:'var(--mint)',fontSize:'1rem',fontWeight:600,marginBottom:'0.5rem'}}>You're on the list!</p><p style={{color:'var(--dim)',fontSize:'0.85rem',marginBottom:'1rem'}}>We'll notify you when BOCY launches.</p><a href={CONFIG.landingPage} className="mono" style={{display:'inline-block',padding:'0.8rem 1.5rem',background:'var(--accent)',color:'var(--bg)',borderRadius:'6px',fontSize:'0.75rem',fontWeight:700,textDecoration:'none'}}>[ LEARN MORE ABOUT BOCY ]</a></div>
 </>)}
