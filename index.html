@@ -727,11 +727,15 @@ lookup={name:words.slice(0,2).map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(
 const isIncomeCategory=lookup.category==='Income';
 const isRefund=lookup.category==='Refund';
 const isSavings=lookup.category==='Savings';
-// Detect income via UK bank payment type indicators (BGC, FPI, BACS Credit, etc.)
-const INCOME_PREFIXES=['bgc','fpi','bacs credit','faster payment received','credit from','bank credit','standing order credit','so credit'];
-const isBankIncome=tx.amount>0&&lookup.category==='Other'&&INCOME_PREFIXES.some(p=>n.includes(p));
-// Lower threshold: £200+ credits that aren't matched to a spending category
-const isLargeCredit=tx.amount>200&&lookup.category==='Other'&&!isRefund;
+// Detect income via UK bank payment type indicators (BGC, FPI, BACS Credit only — not generic transfer terms)
+const INCOME_PREFIXES=['bgc','fpi','bacs credit','bank credit'];
+const TRANSFER_INDICATORS=['faster payment','standing order','bank transfer','transfer to','transfer from'];
+const isPersonTransfer=this._isLikelyPersonName(lookup.name)||TRANSFER_INDICATORS.some(p=>n.includes(p));
+const isBankIncome=tx.amount>0&&lookup.category==='Other'&&!isPersonTransfer&&INCOME_PREFIXES.some(p=>n.includes(p));
+// £200+ credits that aren't matched to a spending category — but NOT person-to-person transfers
+const BUSINESS_INDICATORS=['ltd','plc','limited','inc','payroll','group','services','holdings','council','corp','solutions'];
+const looksLikeBusiness=BUSINESS_INDICATORS.some(p=>n.includes(p));
+const isLargeCredit=tx.amount>200&&lookup.category==='Other'&&!isRefund&&(!isPersonTransfer||looksLikeBusiness);
 const detectedIncome=isIncomeCategory||isBankIncome||isLargeCredit;
 return{...tx,merchant:lookup.name,category:detectedIncome?'Income':lookup.category,subcategory:lookup.subcategory||'',isSubscription:lookup.isSubscription,isIncome:detectedIncome,isRefund,isSavings,isTransfer:lookup.category==='Transfers'||isSavings,isDebt:lookup.category==='Debt Payments',confidence};
 }
@@ -795,12 +799,21 @@ const isSalary=salaryKeywords.some(p=>n.includes(p));
 const key=isSalary?'_salary_':n.split(' ').filter(w=>w.length>2).slice(0,2).join(' ')||'unknown';
 if(!incomeBySource[key])incomeBySource[key]={total:0,count:0,amounts:[],dates:[],merchant:isSalary?'Salary/Wages':(tx.merchant||key),isSalary};
 incomeBySource[key].total+=tx.amount;incomeBySource[key].count++;incomeBySource[key].amounts.push(tx.amount);if(tx.date)incomeBySource[key].dates.push(tx.date)});
-// Step 2: Scan ALL positive credits >£200 for recurring patterns (catches missed payroll)
+// Step 2: Scan positive credits >£200 for recurring patterns — exclude person-to-person transfers
+const BUSINESS_WORDS=['ltd','plc','limited','inc','payroll','group','services','holdings','council','corp','solutions'];
+const TRANSFER_WORDS=['faster payment','standing order','bank transfer','transfer to','transfer from'];
 const allCredits=txs.filter(tx=>tx.amount>200&&!tx.isIncome&&!tx.isRefund&&!tx.isTransfer&&tx.date);
 const credByKey={};
-allCredits.forEach(tx=>{const key=tx.descNorm?.split(' ').filter(w=>w.length>2).slice(0,2).join(' ')||'unknown';if(!credByKey[key])credByKey[key]={total:0,count:0,dates:[],amounts:[],merchant:tx.merchant||key};credByKey[key].total+=tx.amount;credByKey[key].count++;credByKey[key].dates.push(tx.date);credByKey[key].amounts.push(tx.amount)});
+allCredits.forEach(tx=>{const key=tx.descNorm?.split(' ').filter(w=>w.length>2).slice(0,2).join(' ')||'unknown';if(!credByKey[key])credByKey[key]={total:0,count:0,dates:[],amounts:[],merchant:tx.merchant||key,desc:tx.descNorm||''};credByKey[key].total+=tx.amount;credByKey[key].count++;credByKey[key].dates.push(tx.date);credByKey[key].amounts.push(tx.amount)});
 for(const[key,src] of Object.entries(credByKey)){
-if(src.count>=2&&!incomeBySource[key]){src.dates.sort((a,b)=>a-b);const ints=[];for(let i=1;i<src.dates.length;i++){const d=Math.round((src.dates[i]-src.dates[i-1])/(1000*60*60*24));if(d>0)ints.push(d)}
+if(src.count>=2&&!incomeBySource[key]){
+// Skip if merchant looks like a person name and description has no business indicators
+const isPerson=this._isLikelyPersonName(src.merchant);
+const hasBusinessWord=BUSINESS_WORDS.some(w=>(src.desc||'').includes(w)||(key||'').includes(w));
+const hasTransferWord=TRANSFER_WORDS.some(w=>(src.desc||'').includes(w));
+if(isPerson&&!hasBusinessWord)continue;
+if(hasTransferWord&&!hasBusinessWord)continue;
+src.dates.sort((a,b)=>a-b);const ints=[];for(let i=1;i<src.dates.length;i++){const d=Math.round((src.dates[i]-src.dates[i-1])/(1000*60*60*24));if(d>0)ints.push(d)}
 if(ints.length>0){const avg=ints.reduce((a,b)=>a+b,0)/ints.length;
 // Support weekly (5-9), fortnightly (12-18), and monthly (20-45) intervals
 if((avg>=5&&avg<=9)||(avg>=12&&avg<=18)||(avg>=20&&avg<=45)){
