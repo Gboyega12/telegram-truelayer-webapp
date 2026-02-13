@@ -138,6 +138,27 @@ const MERCHANT_DB={
 'standing order':{name:'Standing Order',category:'Transfers',isSubscription:false},
 'faster payment':{name:'Faster Payment',category:'Transfers',isSubscription:false},
 'pot transfer':{name:'Pot Transfer',category:'Transfers',isSubscription:false},
+'direct debit':{name:'Direct Debit',category:'Transfers',isSubscription:false},
+'bank transfer':{name:'Bank Transfer',category:'Transfers',isSubscription:false},
+// Fintech money transfer / payment platforms
+'wise':{name:'Wise',category:'Transfers',isSubscription:false},
+'revolut':{name:'Revolut',category:'Transfers',isSubscription:false},
+'monzo':{name:'Monzo',category:'Transfers',isSubscription:false},
+'paypal':{name:'PayPal',category:'Transfers',isSubscription:false},
+'venmo':{name:'Venmo',category:'Transfers',isSubscription:false},
+'cash app':{name:'Cash App',category:'Transfers',isSubscription:false},
+'zelle':{name:'Zelle',category:'Transfers',isSubscription:false},
+'lemonade':{name:'Lemonade',category:'Transfers',isSubscription:false},
+'circle':{name:'Circle',category:'Transfers',isSubscription:false},
+'pingit':{name:'Pingit',category:'Transfers',isSubscription:false},
+'paym':{name:'Paym',category:'Transfers',isSubscription:false},
+'starling':{name:'Starling',category:'Transfers',isSubscription:false},
+'currencycloud':{name:'CurrencyCloud',category:'Transfers',isSubscription:false},
+'worldremit':{name:'WorldRemit',category:'Transfers',isSubscription:false},
+'remitly':{name:'Remitly',category:'Transfers',isSubscription:false},
+'xoom':{name:'Xoom',category:'Transfers',isSubscription:false},
+'skrill':{name:'Skrill',category:'Transfers',isSubscription:false},
+'neteller':{name:'Neteller',category:'Transfers',isSubscription:false},
 
 // TRANSPORT (isSubscription: false)
 'tfl':{name:'TfL',category:'Transport',isSubscription:false},
@@ -583,15 +604,19 @@ for(let i=0;i<toVerify.length;i+=BATCH_SIZE)batches.push(toVerify.slice(i,i+BATC
 onStatus?.('Categorising '+toVerify.length+' transactions...');
 
 // Map common Claude category variants to our canonical names
-const VALID_CATEGORIES=new Set(['Groceries','Food Delivery','Eating Out','Subscriptions','Debt Payments','Bills','Transport','Shopping','Entertainment','Health','Travel','Charity','Education','Savings','Refund','Income','Other']);
+const VALID_CATEGORIES=new Set(['Groceries','Food Delivery','Eating Out','Subscriptions','Debt Payments','Bills','Transport','Shopping','Entertainment','Health','Travel','Charity','Education','Savings','Refund','Income','Transfers','Other']);
 const CATEGORY_ALIASES={'Dining':'Eating Out','Dining Out':'Eating Out','Restaurants':'Eating Out','Restaurant':'Eating Out','Cafes':'Eating Out','Cafe':'Eating Out','Grocery':'Groceries','Supermarket':'Groceries','Supermarkets':'Groceries','Delivery':'Food Delivery','Takeaway':'Food Delivery','Takeaways':'Food Delivery','Subscription':'Subscriptions','Debt':'Debt Payments','Debt Payment':'Debt Payments','Loan':'Debt Payments','Loans':'Debt Payments','Bill':'Bills','Utilities':'Bills','Utility':'Bills','Telecom':'Bills','Mobile':'Bills','Transportation':'Transport','Taxi':'Transport','Fuel':'Transport','Petrol':'Transport','Retail':'Shopping','Clothing':'Shopping','Clothes':'Shopping','Fashion':'Shopping','Leisure':'Entertainment','Gaming':'Entertainment','Games':'Entertainment','Fitness':'Health','Gym':'Health','Medical':'Health','Healthcare':'Health','Wellness':'Health','Flights':'Travel','Hotels':'Travel','Holiday':'Travel','Holidays':'Travel','Accommodation':'Travel','Donations':'Charity','Donation':'Charity','Investment':'Savings','Investments':'Savings','Transfer':'Transfers','Transfers':'Transfers','Income':'Income'};
 const normaliseCategory=c=>{if(!c)return'Other';if(VALID_CATEGORIES.has(c))return c;return CATEGORY_ALIASES[c]||'Other'};
 const processBatch=async(batch,retries=2)=>{
 const txList=batch.map((tx,i)=>`${i+1}. "${tx.description}" ${tx.amount>0?'CREDIT':'DEBIT'} £${Math.abs(tx.amount).toFixed(2)}`).join('\n');
 const prompt=`Categorise these UK bank transactions. Return JSON array only.
 Each object: {"index":N,"merchant":"Name","category":"Cat","isSubscription":false}
-Categories: Groceries, Food Delivery, Eating Out, Subscriptions (isSubscription=true), Debt Payments, Bills, Transport, Shopping, Entertainment, Health, Travel, Charity, Education, Savings, Income, Other
-Groceries=supermarkets. Food Delivery=Deliveroo/UberEats/JustEat. Eating Out=restaurants/cafes/pubs. Travel=flights/hotels/holidays. Charity=donations/giving. Education=courses/tuition/student loans. Savings=investments/ISAs/trading platforms. Income=salary/wages/payroll/employer payments/company payroll credits (from payroll companies like Moorepay, ADP, Sage, Zellis, or direct employer payments via BGC/FPI/BACS).
+Categories: Groceries, Food Delivery, Eating Out, Subscriptions (isSubscription=true), Debt Payments, Bills, Transport, Shopping, Entertainment, Health, Travel, Charity, Education, Savings, Income, Transfers, Other
+IMPORTANT RULES:
+- Transfers=money sent between accounts or to people via bank transfers, fintech platforms (Wise, Revolut, Monzo, PayPal, Lemonade, Starling, Skrill, Venmo), standing orders to individuals, or faster payments to individuals. These are NOT debt or income.
+- Debt Payments=ONLY credit cards (Amex, Barclaycard, MBNA), BNPL (Klarna, Clearpay, Afterpay), or loans with interest. NOT transfers to fintech platforms.
+- Income=ONLY salary/wages/payroll from employers or payroll companies (Moorepay, ADP, Sage, Zellis). Must be a CREDIT from an employer or payroll service. NOT person-to-person transfers.
+- Groceries=supermarkets. Food Delivery=Deliveroo/UberEats/JustEat. Eating Out=restaurants/cafes/pubs. Travel=flights/hotels/holidays.
 Transactions:
 ${txList}`;
 for(let attempt=0;attempt<=retries;attempt++){
@@ -607,10 +632,12 @@ if(idx>=0&&idx<batch.length){
 const tx=batch[idx];
 const claudeCat=normaliseCategory(cat.category);
 tx._claudeVerified=true;
-// Always let Claude refine categorisation for better first-load accuracy
+// Let Claude refine merchant name if local match was low confidence
 if(cat.merchant){const nm=cat.merchant.trim();if(tx.merchant==='Unknown'||tx.confidence!=='high')tx.merchant=nm.split(/\s+/).map(w=>w.charAt(0).toUpperCase()+w.slice(1).toLowerCase()).join(' ')}
-// Use Claude's category if it's not 'Other' or local was also 'Other'
-if(claudeCat!=='Other'||tx.category==='Other'){
+// Only let Claude override category if: local was 'Other' (unknown), OR Claude has a non-Other answer and local was low confidence
+// NEVER let Claude override high-confidence local matches (MERCHANT_DB hits)
+const shouldOverride=(tx.category==='Other')||(claudeCat!=='Other'&&tx.confidence!=='high');
+if(shouldOverride){
 tx.category=claudeCat;
 if(typeof cat.isSubscription==='boolean')tx.isSubscription=cat.isSubscription;
 tx.isDebt=claudeCat==='Debt Payments';
@@ -696,20 +723,30 @@ m=s.match(/(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\w*\s+(\
 const d=new Date(s);return isNaN(d)?null:d}
 norm(d){return d.toLowerCase().replace(/[^\w\s]/g,' ').replace(/\d{4,}/g,'').replace(/\s+/g,' ').trim()}
 
-// Detect likely person-to-person transfers (names like "JOHN SMITH", "J SMITH") that aren't merchants
+// Detect likely person-to-person transfers (names like "JOHN SMITH", "J SMITH", "JOHN-PAUL SMITH")
 _isLikelyPersonName(merchant){
 if(!merchant||merchant.length<3)return false;
 const m=merchant.toLowerCase();
-// Skip known merchant names
+// Skip known merchant names from MERCHANT_DB
 if(this._sortedPatterns&&this._sortedPatterns.some(([,data])=>data.name.toLowerCase()===m))return false;
-// Common transfer indicators
-if(m.includes('transfer')||m.includes('faster payment')||m.includes('standing order'))return true;
-// Pattern: 1-2 short words, all letters, no known brand indicators
-const words=m.split(/\s+/).filter(w=>w.length>0);
-if(words.length>=1&&words.length<=3&&words.every(w=>/^[a-z'-]+$/.test(w))&&!words.some(w=>w.length>12)){
-// Likely a person name if it's short alphabetic words with no numbers or special chars
-const brandIndicators=['ltd','inc','plc','limited','store','shop','market','cafe','restaurant','gym','club','online','digital','mobile','energy','water','insurance','finance'];
-if(!words.some(w=>brandIndicators.includes(w)))return true;
+// Common transfer indicators in description
+if(m.includes('transfer')||m.includes('faster payment')||m.includes('standing order')||m.includes('sent to')||m.includes('payment to')||m.includes('send'))return true;
+// Title prefixes that indicate a person
+const namePrefixes=['mr','mrs','ms','miss','dr','prof'];
+// Normalise hyphens to spaces for word splitting (handles "john-paul")
+const normalised=m.replace(/-/g,' ');
+const words=normalised.split(/\s+/).filter(w=>w.length>0);
+// Strip title prefix for the person-name check
+const nameWords=words.filter(w=>!namePrefixes.includes(w));
+// Brand/business indicators — if any word matches, it's not a person
+const brandIndicators=['ltd','inc','plc','limited','store','shop','market','cafe','restaurant','gym','club','online','digital','mobile','energy','water','insurance','finance','payroll','group','services','holdings','council','corp','solutions','bank','building','society','exchange','trading','capital','invest','fund','tech','media','agency','academy','foundation'];
+if(nameWords.some(w=>brandIndicators.includes(w)))return false;
+// Fintech platforms — never a person name
+const fintechNames=['wise','revolut','monzo','paypal','starling','venmo','lemonade','skrill','neteller','circle','pingit','cashapp','xoom','worldremit','remitly','currencycloud'];
+if(nameWords.some(w=>fintechNames.includes(w)))return false;
+// Pattern: 1-3 short alphabetic words (including hyphens stripped above), no numbers
+if(nameWords.length>=1&&nameWords.length<=3&&nameWords.every(w=>/^[a-z']+$/.test(w))&&!nameWords.some(w=>w.length>15)){
+return true;
 }
 return false;
 }
@@ -727,16 +764,15 @@ lookup={name:words.slice(0,2).map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(
 const isIncomeCategory=lookup.category==='Income';
 const isRefund=lookup.category==='Refund';
 const isSavings=lookup.category==='Savings';
-// Detect income via UK bank payment type indicators (BGC, FPI, BACS Credit only — not generic transfer terms)
-const INCOME_PREFIXES=['bgc','fpi','bacs credit','bank credit'];
-const TRANSFER_INDICATORS=['faster payment','standing order','bank transfer','transfer to','transfer from'];
-const isPersonTransfer=this._isLikelyPersonName(lookup.name)||TRANSFER_INDICATORS.some(p=>n.includes(p));
-const isBankIncome=tx.amount>0&&lookup.category==='Other'&&!isPersonTransfer&&INCOME_PREFIXES.some(p=>n.includes(p));
-// £200+ credits that aren't matched to a spending category — but NOT person-to-person transfers
+// Income detection: only flag as income if there's a POSITIVE signal (salary keyword, payroll company, or bank income prefix)
+// Never auto-tag based on amount alone — let buildProfile recurring scanner + Claude handle unknowns
+const INCOME_SIGNALS=['bgc','fpi','bacs credit','bank credit','salary','wages','payroll','net pay','monthly pay','direct deposit'];
+const isBankIncome=tx.amount>0&&lookup.category==='Other'&&INCOME_SIGNALS.some(p=>n.includes(p));
 const BUSINESS_INDICATORS=['ltd','plc','limited','inc','payroll','group','services','holdings','council','corp','solutions'];
 const looksLikeBusiness=BUSINESS_INDICATORS.some(p=>n.includes(p));
-const isLargeCredit=tx.amount>200&&lookup.category==='Other'&&!isRefund&&(!isPersonTransfer||looksLikeBusiness);
-const detectedIncome=isIncomeCategory||isBankIncome||isLargeCredit;
+// Only flag large credits as income if they look like a business payment (not just any £200+ credit)
+const isBusinessCredit=tx.amount>200&&lookup.category==='Other'&&!isRefund&&looksLikeBusiness;
+const detectedIncome=isIncomeCategory||isBankIncome||isBusinessCredit;
 return{...tx,merchant:lookup.name,category:detectedIncome?'Income':lookup.category,subcategory:lookup.subcategory||'',isSubscription:lookup.isSubscription,isIncome:detectedIncome,isRefund,isSavings,isTransfer:lookup.category==='Transfers'||isSavings,isDebt:lookup.category==='Debt Payments',confidence};
 }
 
@@ -799,27 +835,36 @@ const isSalary=salaryKeywords.some(p=>n.includes(p));
 const key=isSalary?'_salary_':n.split(' ').filter(w=>w.length>2).slice(0,2).join(' ')||'unknown';
 if(!incomeBySource[key])incomeBySource[key]={total:0,count:0,amounts:[],dates:[],merchant:isSalary?'Salary/Wages':(tx.merchant||key),isSalary};
 incomeBySource[key].total+=tx.amount;incomeBySource[key].count++;incomeBySource[key].amounts.push(tx.amount);if(tx.date)incomeBySource[key].dates.push(tx.date)});
-// Step 2: Scan positive credits >£200 for recurring patterns — exclude person-to-person transfers
-const BUSINESS_WORDS=['ltd','plc','limited','inc','payroll','group','services','holdings','council','corp','solutions'];
-const TRANSFER_WORDS=['faster payment','standing order','bank transfer','transfer to','transfer from'];
+// Step 2: Scan positive credits >£200 for recurring patterns — strict filtering
+const BUSINESS_WORDS=['ltd','plc','limited','inc','payroll','group','services','holdings','council','corp','solutions','academy','foundation','charity'];
+const TRANSFER_WORDS=['faster payment','standing order','bank transfer','transfer to','transfer from','sent to','payment to','send'];
+const FINTECH_WORDS=['wise','revolut','monzo','paypal','starling','venmo','lemonade','skrill','neteller','circle','pingit','cashapp','xoom','worldremit','remitly','currencycloud'];
 const allCredits=txs.filter(tx=>tx.amount>200&&!tx.isIncome&&!tx.isRefund&&!tx.isTransfer&&tx.date);
 const credByKey={};
 allCredits.forEach(tx=>{const key=tx.descNorm?.split(' ').filter(w=>w.length>2).slice(0,2).join(' ')||'unknown';if(!credByKey[key])credByKey[key]={total:0,count:0,dates:[],amounts:[],merchant:tx.merchant||key,desc:tx.descNorm||''};credByKey[key].total+=tx.amount;credByKey[key].count++;credByKey[key].dates.push(tx.date);credByKey[key].amounts.push(tx.amount)});
 for(const[key,src] of Object.entries(credByKey)){
-if(src.count>=2&&!incomeBySource[key]){
-// Skip if merchant looks like a person name and description has no business indicators
+// Require 3+ occurrences for recurring income detection (not just 2)
+if(src.count>=3&&!incomeBySource[key]){
+const desc=src.desc||'';const allText=desc+' '+key+' '+(src.merchant||'').toLowerCase();
+// Skip fintech platform transfers entirely
+const isFintech=FINTECH_WORDS.some(w=>allText.includes(w));
+if(isFintech)continue;
+// Skip if merchant looks like a person name
 const isPerson=this._isLikelyPersonName(src.merchant);
-const hasBusinessWord=BUSINESS_WORDS.some(w=>(src.desc||'').includes(w)||(key||'').includes(w));
-const hasTransferWord=TRANSFER_WORDS.some(w=>(src.desc||'').includes(w));
-if(isPerson&&!hasBusinessWord)continue;
+if(isPerson)continue;
+// Skip if description contains transfer indicators without business context
+const hasBusinessWord=BUSINESS_WORDS.some(w=>allText.includes(w));
+const hasTransferWord=TRANSFER_WORDS.some(w=>allText.includes(w));
 if(hasTransferWord&&!hasBusinessWord)continue;
+// Must have either a business indicator or a salary keyword to qualify
+const hasSalaryWord=salaryKeywords.some(p=>allText.includes(p));
+if(!hasBusinessWord&&!hasSalaryWord)continue;
 src.dates.sort((a,b)=>a-b);const ints=[];for(let i=1;i<src.dates.length;i++){const d=Math.round((src.dates[i]-src.dates[i-1])/(1000*60*60*24));if(d>0)ints.push(d)}
 if(ints.length>0){const avg=ints.reduce((a,b)=>a+b,0)/ints.length;
 // Support weekly (5-9), fortnightly (12-18), and monthly (20-45) intervals
 if((avg>=5&&avg<=9)||(avg>=12&&avg<=18)||(avg>=20&&avg<=45)){
-const isSalary=salaryKeywords.some(p=>(key||'').includes(p));
+const isSalary=hasSalaryWord;
 incomeBySource[key]={...src,isSalary};
-// Retroactively mark these transactions as income
 allCredits.filter(tx=>(tx.descNorm?.split(' ').filter(w=>w.length>2).slice(0,2).join(' ')||'unknown')===key).forEach(tx=>{tx.isIncome=true;tx.category='Income'});
 }}}}
 const _calcFreq=(dates)=>{if(dates.length<2)return'irregular';dates.sort((a,b)=>a-b);const ints=[];for(let i=1;i<dates.length;i++){const d=Math.round((dates[i]-dates[i-1])/(1000*60*60*24));if(d>0)ints.push(d)};if(!ints.length)return'irregular';const avg=ints.reduce((a,b)=>a+b,0)/ints.length;return avg<10?'weekly':avg<18?'fortnightly':avg<45?'monthly':'irregular'};
