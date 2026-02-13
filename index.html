@@ -773,6 +773,8 @@ const looksLikeBusiness=BUSINESS_INDICATORS.some(p=>n.includes(p));
 // Only flag large credits as income if they look like a business payment (not just any £200+ credit)
 const isBusinessCredit=tx.amount>200&&lookup.category==='Other'&&!isRefund&&looksLikeBusiness;
 const detectedIncome=isIncomeCategory||isBankIncome||isBusinessCredit;
+// If we locally detected income, protect it from Claude override by marking high confidence
+if(detectedIncome&&confidence!=='high')confidence='high';
 return{...tx,merchant:lookup.name,category:detectedIncome?'Income':lookup.category,subcategory:lookup.subcategory||'',isSubscription:lookup.isSubscription,isIncome:detectedIncome,isRefund,isSavings,isTransfer:lookup.category==='Transfers'||isSavings,isDebt:lookup.category==='Debt Payments',confidence};
 }
 
@@ -856,14 +858,15 @@ if(isPerson)continue;
 const hasBusinessWord=BUSINESS_WORDS.some(w=>allText.includes(w));
 const hasTransferWord=TRANSFER_WORDS.some(w=>allText.includes(w));
 if(hasTransferWord&&!hasBusinessWord)continue;
-// Must have either a business indicator or a salary keyword to qualify
+// Qualify if: has business word, OR salary keyword, OR consistent high-value amounts (>£300 with low variance = likely salary)
 const hasSalaryWord=salaryKeywords.some(p=>allText.includes(p));
-if(!hasBusinessWord&&!hasSalaryWord)continue;
+const amts=src.amounts||[];const avgAmt=amts.reduce((a,b)=>a+b,0)/amts.length;const amtVariance=amts.reduce((s,a)=>s+Math.pow(a-avgAmt,2),0)/amts.length;const isConsistentHighValue=avgAmt>300&&Math.sqrt(amtVariance)<avgAmt*0.15;
+if(!hasBusinessWord&&!hasSalaryWord&&!isConsistentHighValue)continue;
 src.dates.sort((a,b)=>a-b);const ints=[];for(let i=1;i<src.dates.length;i++){const d=Math.round((src.dates[i]-src.dates[i-1])/(1000*60*60*24));if(d>0)ints.push(d)}
 if(ints.length>0){const avg=ints.reduce((a,b)=>a+b,0)/ints.length;
 // Support weekly (5-9), fortnightly (12-18), and monthly (20-45) intervals
 if((avg>=5&&avg<=9)||(avg>=12&&avg<=18)||(avg>=20&&avg<=45)){
-const isSalary=hasSalaryWord;
+const isSalary=hasSalaryWord||isConsistentHighValue;
 incomeBySource[key]={...src,isSalary};
 allCredits.filter(tx=>(tx.descNorm?.split(' ').filter(w=>w.length>2).slice(0,2).join(' ')||'unknown')===key).forEach(tx=>{tx.isIncome=true;tx.category='Income'});
 }}}}
