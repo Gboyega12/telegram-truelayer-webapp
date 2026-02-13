@@ -365,7 +365,7 @@ const MERCHANT_DB={
 'plum ':{name:'Plum',category:'Savings',isSubscription:false,_wordBound:true},
 'chip ':{name:'Chip',category:'Savings',isSubscription:false,_wordBound:true},
 
-// INCOME — only genuine income sources, NOT refunds
+// INCOME — genuine income sources, NOT refunds
 'salary':{name:'Salary',category:'Income',isSubscription:false},
 'wages':{name:'Wages',category:'Income',isSubscription:false},
 'payroll':{name:'Payroll',category:'Income',isSubscription:false},
@@ -373,6 +373,24 @@ const MERCHANT_DB={
 'dividend':{name:'Dividend',category:'Income',isSubscription:false},
 'hmrc':{name:'HMRC',category:'Income',isSubscription:false},
 'tax refund':{name:'Tax Refund',category:'Income',isSubscription:false},
+'net pay':{name:'Salary',category:'Income',isSubscription:false},
+'monthly pay':{name:'Salary',category:'Income',isSubscription:false},
+'direct deposit':{name:'Salary',category:'Income',isSubscription:false},
+// UK payroll companies
+'moorepay':{name:'Moorepay Payroll',category:'Income',isSubscription:false},
+'adp ':{name:'ADP Payroll',category:'Income',isSubscription:false,_wordBound:true},
+'sage payroll':{name:'Sage Payroll',category:'Income',isSubscription:false},
+'zellis':{name:'Zellis Payroll',category:'Income',isSubscription:false},
+'capita payroll':{name:'Capita Payroll',category:'Income',isSubscription:false},
+'ceridian':{name:'Ceridian Payroll',category:'Income',isSubscription:false},
+'iris fmp':{name:'IRIS Payroll',category:'Income',isSubscription:false},
+'sdworx':{name:'SD Worx Payroll',category:'Income',isSubscription:false},
+'dataplan payroll':{name:'Dataplan Payroll',category:'Income',isSubscription:false},
+'cintra':{name:'Cintra Payroll',category:'Income',isSubscription:false},
+'payescape':{name:'Payescape Payroll',category:'Income',isSubscription:false},
+'brightpay':{name:'BrightPay Payroll',category:'Income',isSubscription:false},
+'paychex':{name:'Paychex Payroll',category:'Income',isSubscription:false},
+'pay from':{name:'Salary',category:'Income',isSubscription:false},
 
 // REFUNDS — credits but not income (excluded from income calculations)
 'refund':{name:'Refund',category:'Refund',isSubscription:false},
@@ -555,7 +573,8 @@ return result;
 
 // Send all spending transactions to Claude in parallel batches for categorisation
 async verifyWithClaude(enrichedTxs,onStatus){
-const toVerify=enrichedTxs.filter(tx=>!tx.isIncome&&!tx.isTransfer&&!tx.isRefund&&Math.abs(tx.amount)>0);
+// Include spending + uncategorised positive credits (potential income Claude might recognise)
+const toVerify=enrichedTxs.filter(tx=>!tx.isTransfer&&!tx.isRefund&&Math.abs(tx.amount)>0&&(!tx.isIncome||tx.confidence!=='high'));
 if(toVerify.length===0)return enrichedTxs;
 
 const BATCH_SIZE=50;
@@ -564,15 +583,15 @@ for(let i=0;i<toVerify.length;i+=BATCH_SIZE)batches.push(toVerify.slice(i,i+BATC
 onStatus?.('Categorising '+toVerify.length+' transactions...');
 
 // Map common Claude category variants to our canonical names
-const VALID_CATEGORIES=new Set(['Groceries','Food Delivery','Eating Out','Subscriptions','Debt Payments','Bills','Transport','Shopping','Entertainment','Health','Travel','Charity','Education','Savings','Refund','Other']);
+const VALID_CATEGORIES=new Set(['Groceries','Food Delivery','Eating Out','Subscriptions','Debt Payments','Bills','Transport','Shopping','Entertainment','Health','Travel','Charity','Education','Savings','Refund','Income','Other']);
 const CATEGORY_ALIASES={'Dining':'Eating Out','Dining Out':'Eating Out','Restaurants':'Eating Out','Restaurant':'Eating Out','Cafes':'Eating Out','Cafe':'Eating Out','Grocery':'Groceries','Supermarket':'Groceries','Supermarkets':'Groceries','Delivery':'Food Delivery','Takeaway':'Food Delivery','Takeaways':'Food Delivery','Subscription':'Subscriptions','Debt':'Debt Payments','Debt Payment':'Debt Payments','Loan':'Debt Payments','Loans':'Debt Payments','Bill':'Bills','Utilities':'Bills','Utility':'Bills','Telecom':'Bills','Mobile':'Bills','Transportation':'Transport','Taxi':'Transport','Fuel':'Transport','Petrol':'Transport','Retail':'Shopping','Clothing':'Shopping','Clothes':'Shopping','Fashion':'Shopping','Leisure':'Entertainment','Gaming':'Entertainment','Games':'Entertainment','Fitness':'Health','Gym':'Health','Medical':'Health','Healthcare':'Health','Wellness':'Health','Flights':'Travel','Hotels':'Travel','Holiday':'Travel','Holidays':'Travel','Accommodation':'Travel','Donations':'Charity','Donation':'Charity','Investment':'Savings','Investments':'Savings','Transfer':'Transfers','Transfers':'Transfers','Income':'Income'};
 const normaliseCategory=c=>{if(!c)return'Other';if(VALID_CATEGORIES.has(c))return c;return CATEGORY_ALIASES[c]||'Other'};
 const processBatch=async(batch,retries=2)=>{
-const txList=batch.map((tx,i)=>`${i+1}. "${tx.description}" £${Math.abs(tx.amount).toFixed(2)}`).join('\n');
+const txList=batch.map((tx,i)=>`${i+1}. "${tx.description}" ${tx.amount>0?'CREDIT':'DEBIT'} £${Math.abs(tx.amount).toFixed(2)}`).join('\n');
 const prompt=`Categorise these UK bank transactions. Return JSON array only.
 Each object: {"index":N,"merchant":"Name","category":"Cat","isSubscription":false}
-Categories: Groceries, Food Delivery, Eating Out, Subscriptions (isSubscription=true), Debt Payments, Bills, Transport, Shopping, Entertainment, Health, Travel, Charity, Education, Savings, Other
-Groceries=supermarkets. Food Delivery=Deliveroo/UberEats/JustEat. Eating Out=restaurants/cafes/pubs. Travel=flights/hotels/holidays. Charity=donations/giving. Education=courses/tuition/student loans. Savings=investments/ISAs/trading platforms.
+Categories: Groceries, Food Delivery, Eating Out, Subscriptions (isSubscription=true), Debt Payments, Bills, Transport, Shopping, Entertainment, Health, Travel, Charity, Education, Savings, Income, Other
+Groceries=supermarkets. Food Delivery=Deliveroo/UberEats/JustEat. Eating Out=restaurants/cafes/pubs. Travel=flights/hotels/holidays. Charity=donations/giving. Education=courses/tuition/student loans. Savings=investments/ISAs/trading platforms. Income=salary/wages/payroll/employer payments/company payroll credits (from payroll companies like Moorepay, ADP, Sage, Zellis, or direct employer payments via BGC/FPI/BACS).
 Transactions:
 ${txList}`;
 for(let attempt=0;attempt<=retries;attempt++){
@@ -708,8 +727,13 @@ lookup={name:words.slice(0,2).map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(
 const isIncomeCategory=lookup.category==='Income';
 const isRefund=lookup.category==='Refund';
 const isSavings=lookup.category==='Savings';
-const isLargeCredit=tx.amount>1000&&lookup.category==='Other';
-return{...tx,merchant:lookup.name,category:isLargeCredit?'Income':lookup.category,subcategory:lookup.subcategory||'',isSubscription:lookup.isSubscription,isIncome:isIncomeCategory||isLargeCredit,isRefund,isSavings,isTransfer:lookup.category==='Transfers'||isSavings,isDebt:lookup.category==='Debt Payments',confidence};
+// Detect income via UK bank payment type indicators (BGC, FPI, BACS Credit, etc.)
+const INCOME_PREFIXES=['bgc','fpi','bacs credit','faster payment received','credit from','bank credit','standing order credit','so credit'];
+const isBankIncome=tx.amount>0&&lookup.category==='Other'&&INCOME_PREFIXES.some(p=>n.includes(p));
+// Lower threshold: £200+ credits that aren't matched to a spending category
+const isLargeCredit=tx.amount>200&&lookup.category==='Other'&&!isRefund;
+const detectedIncome=isIncomeCategory||isBankIncome||isLargeCredit;
+return{...tx,merchant:lookup.name,category:detectedIncome?'Income':lookup.category,subcategory:lookup.subcategory||'',isSubscription:lookup.isSubscription,isIncome:detectedIncome,isRefund,isSavings,isTransfer:lookup.category==='Transfers'||isSavings,isDebt:lookup.category==='Debt Payments',confidence};
 }
 
 detectRecurring(txs){
@@ -762,30 +786,43 @@ const byMerch={};
 spending.forEach(tx=>{if(!tx.merchant)return;if(!byMerch[tx.merchant])byMerch[tx.merchant]={total:0,count:0};byMerch[tx.merchant].total+=Math.abs(tx.amount);byMerch[tx.merchant].count++});
 const topMerchants=Object.entries(byMerch).map(([merchant,d])=>({merchant,total:Math.round(d.total),count:d.count})).sort((a,b)=>b.total-a.total).slice(0,10);
 
-// Income analysis — find primary income source carefully
+// Income analysis — detect ALL recurring credits as potential income
 const incomeBySource={};
-const salaryKeywords=['salary','wages','payroll','pay from','monthly pay','net pay','direct deposit'];
+const salaryKeywords=['salary','wages','payroll','pay from','monthly pay','net pay','direct deposit','moorepay','adp','zellis','sage payroll','capita payroll','ceridian','iris fmp','sdworx','bgc','fpi','bacs credit'];
+// Step 1: Process already-identified income
 income.forEach(tx=>{const n=tx.descNorm||'';
 const isSalary=salaryKeywords.some(p=>n.includes(p));
 const key=isSalary?'_salary_':n.split(' ').filter(w=>w.length>2).slice(0,2).join(' ')||'unknown';
 if(!incomeBySource[key])incomeBySource[key]={total:0,count:0,amounts:[],dates:[],merchant:isSalary?'Salary/Wages':(tx.merchant||key),isSalary};
 incomeBySource[key].total+=tx.amount;incomeBySource[key].count++;incomeBySource[key].amounts.push(tx.amount);if(tx.date)incomeBySource[key].dates.push(tx.date)});
-// Also detect large regular credits (>£500, appearing 2+ times monthly) as missed income
-const largeCreds=txs.filter(tx=>tx.amount>500&&!tx.isIncome&&!tx.isRefund&&!tx.isTransfer&&tx.date);
+// Step 2: Scan ALL positive credits >£200 for recurring patterns (catches missed payroll)
+const allCredits=txs.filter(tx=>tx.amount>200&&!tx.isIncome&&!tx.isRefund&&!tx.isTransfer&&tx.date);
 const credByKey={};
-largeCreds.forEach(tx=>{const key=tx.descNorm?.split(' ').filter(w=>w.length>2).slice(0,2).join(' ')||'unknown';if(!credByKey[key])credByKey[key]={total:0,count:0,dates:[],merchant:tx.merchant||key};credByKey[key].total+=tx.amount;credByKey[key].count++;credByKey[key].dates.push(tx.date)});
+allCredits.forEach(tx=>{const key=tx.descNorm?.split(' ').filter(w=>w.length>2).slice(0,2).join(' ')||'unknown';if(!credByKey[key])credByKey[key]={total:0,count:0,dates:[],amounts:[],merchant:tx.merchant||key};credByKey[key].total+=tx.amount;credByKey[key].count++;credByKey[key].dates.push(tx.date);credByKey[key].amounts.push(tx.amount)});
 for(const[key,src] of Object.entries(credByKey)){
 if(src.count>=2&&!incomeBySource[key]){src.dates.sort((a,b)=>a-b);const ints=[];for(let i=1;i<src.dates.length;i++){const d=Math.round((src.dates[i]-src.dates[i-1])/(1000*60*60*24));if(d>0)ints.push(d)}
-if(ints.length>0){const avg=ints.reduce((a,b)=>a+b,0)/ints.length;if(avg>20&&avg<45){incomeBySource[key]={...src,amounts:largeCreds.filter(tx=>(tx.descNorm?.split(' ').filter(w=>w.length>2).slice(0,2).join(' ')||'unknown')===key).map(tx=>tx.amount),isSalary:false}}}}}
+if(ints.length>0){const avg=ints.reduce((a,b)=>a+b,0)/ints.length;
+// Support weekly (5-9), fortnightly (12-18), and monthly (20-45) intervals
+if((avg>=5&&avg<=9)||(avg>=12&&avg<=18)||(avg>=20&&avg<=45)){
+const isSalary=salaryKeywords.some(p=>(key||'').includes(p));
+incomeBySource[key]={...src,isSalary};
+// Retroactively mark these transactions as income
+allCredits.filter(tx=>(tx.descNorm?.split(' ').filter(w=>w.length>2).slice(0,2).join(' ')||'unknown')===key).forEach(tx=>{tx.isIncome=true;tx.category='Income'});
+}}}}
 const _calcFreq=(dates)=>{if(dates.length<2)return'irregular';dates.sort((a,b)=>a-b);const ints=[];for(let i=1;i<dates.length;i++){const d=Math.round((dates[i]-dates[i-1])/(1000*60*60*24));if(d>0)ints.push(d)};if(!ints.length)return'irregular';const avg=ints.reduce((a,b)=>a+b,0)/ints.length;return avg<10?'weekly':avg<18?'fortnightly':avg<45?'monthly':'irregular'};
 const incomeSources=Object.values(incomeBySource).map(src=>{
 const frequency=_calcFreq(src.dates);
 const avgAmount=Math.round(src.total/src.count);
-return{source:src.merchant,frequency,avgAmount,total:Math.round(src.total),count:src.count,monthly:mo(src.total),isPrimary:false,isSalary:src.isSalary||false}
-}).sort((a,b)=>b.total-a.total);
-// Mark primary income source — salary first, then largest regular source
-if(incomeSources.length>0){const primary=incomeSources.find(s=>s.isSalary)||incomeSources.find(s=>s.frequency==='monthly'&&s.monthly>500)||incomeSources[0];if(primary){primary.isPrimary=true;primary.source=primary.isSalary?'Primary Income (Salary)':primary.source+' (Primary)'}}
+// Calculate monthly equivalent: weekly*4.33, fortnightly*2.17, monthly as-is
+const monthlyEquiv=frequency==='weekly'?Math.round(avgAmount*4.33):frequency==='fortnightly'?Math.round(avgAmount*2.17):mo(src.total);
+return{source:src.merchant,frequency,avgAmount,total:Math.round(src.total),count:src.count,monthly:monthlyEquiv,isPrimary:false,isSalary:src.isSalary||false}
+}).sort((a,b)=>b.monthly-a.monthly);
+// Mark primary income source — salary first, then largest regular (weekly/monthly), then largest overall
+if(incomeSources.length>0){const primary=incomeSources.find(s=>s.isSalary)||incomeSources.find(s=>['weekly','fortnightly','monthly'].includes(s.frequency)&&s.monthly>400)||incomeSources[0];if(primary){primary.isPrimary=true;primary.source=primary.isSalary?'Primary Income (Salary)':primary.source+' (Primary)'}}
 const incomeStreams=incomeSources.length;
+// Recalculate total income including newly detected sources
+const totalIncomeRevised=Object.values(incomeBySource).reduce((s,src)=>s+src.total,0);
+const monthlyIncomeRevised=incomeSources.reduce((s,src)=>s+src.monthly,0);
 
 // Non-discretionary vs discretionary split
 const nonDiscretionaryCats=['Bills','Groceries','Transport','Debt Payments','Education','Health'];
@@ -803,11 +840,13 @@ else if(!hiddenCats.has(cat)){discretionary.total+=monthly;discretionary.items.p
 }
 nonDiscretionary.items.sort((a,b)=>b.monthly-a.monthly);
 discretionary.items.sort((a,b)=>b.monthly-a.monthly);
-const budgetSurplus=mo(totalIncome)-nonDiscretionary.total-discretionary.total;
+// Use revised monthly income (properly handles weekly/fortnightly pay)
+const effectiveMonthlyIncome=monthlyIncomeRevised>0?monthlyIncomeRevised:mo(totalIncome);
+const budgetSurplus=effectiveMonthlyIncome-nonDiscretionary.total-discretionary.total;
 
 // Financial advisor suggestions for people in debt distress
 const totalMonthlyNeeds=nonDiscretionary.total+discretionary.total;
-const monthlyInc=mo(totalIncome);
+const monthlyInc=effectiveMonthlyIncome;
 const financialAdvisorTips=[];
 if(debtPay.length>0&&monthlyInc>0&&monthlyInc<totalMonthlyNeeds){
 const shortfall=totalMonthlyNeeds-monthlyInc;
@@ -820,8 +859,8 @@ if(monthlyInc<nonDiscretionary.total)financialAdvisorTips.push({type:'crisis',ti
 
 return{
 transactionCount:txs.length,monthSpan:months,
-monthly:{income:mo(totalIncome),spending:mo(totalSpending),surplus:mo(surplus),subscriptions:Math.round(subTotal),debtPayments:Math.round(debtTotal),foodDelivery:mo(byCat['Food Delivery']?.total||0),shopping:mo(byCat['Shopping']?.total||0),entertainment:mo(byCat['Entertainment']?.total||0),groceries:mo(byCat['Groceries']?.total||0),transport:mo(byCat['Transport']?.total||0),eatingOut:mo(byCat['Eating Out']?.total||0),health:mo(byCat['Health']?.total||0),travel:mo(byCat['Travel']?.total||0),charity:mo(byCat['Charity']?.total||0),education:mo(byCat['Education']?.total||0)},
-metrics:{savingsRate:totalIncome>0?Math.round((surplus/totalIncome)*100):(totalSpending>0?-100:0),subscriptionCount:subs.length,debtAccountCount:debtPay.length,creditCardCount:creditCards.length,bnplCount:bnpl.length,streamingCount:streaming.length},
+monthly:{income:effectiveMonthlyIncome,spending:mo(totalSpending),surplus:effectiveMonthlyIncome-mo(totalSpending),subscriptions:Math.round(subTotal),debtPayments:Math.round(debtTotal),foodDelivery:mo(byCat['Food Delivery']?.total||0),shopping:mo(byCat['Shopping']?.total||0),entertainment:mo(byCat['Entertainment']?.total||0),groceries:mo(byCat['Groceries']?.total||0),transport:mo(byCat['Transport']?.total||0),eatingOut:mo(byCat['Eating Out']?.total||0),health:mo(byCat['Health']?.total||0),travel:mo(byCat['Travel']?.total||0),charity:mo(byCat['Charity']?.total||0),education:mo(byCat['Education']?.total||0)},
+metrics:{savingsRate:effectiveMonthlyIncome>0?Math.round(((effectiveMonthlyIncome-mo(totalSpending))/effectiveMonthlyIncome)*100):(totalSpending>0?-100:0),subscriptionCount:subs.length,debtAccountCount:debtPay.length,creditCardCount:creditCards.length,bnplCount:bnpl.length,streamingCount:streaming.length},
 // Spending trend: compare last 30 days vs overall monthly average
 spendingTrend:this.calcSpendingTrend(spending,months),
 // Income analysis
