@@ -757,16 +757,6 @@ let lookup=null;let confidence='low';
 // Sort patterns by length descending so "uber eats" matches before "uber", "amazon prime video" before "amazon"
 if(!this._sortedPatterns)this._sortedPatterns=Object.entries(MERCHANT_DB).sort((a,b)=>b[0].length-a[0].length);
 for(const[pattern,data]of this._sortedPatterns){if(data._wordBound){const p=pattern.trim();const idx=n.indexOf(p);if(idx>=0&&(idx===0||n[idx-1]===' ')&&(idx+p.length>=n.length||n[idx+p.length]===' ')){lookup=data;confidence='high';break}}else if(n.includes(pattern)){lookup=data;confidence='high';break}}
-// For CREDITS: generic payment type patterns (faster payment, standing order, etc.) are payment rails,
-// not merchants. They appear on both incoming salary and outgoing P2P. Don't let them override income detection.
-const GENERIC_PAYMENT_TYPES=new Set(['Transfer','Faster Payment','Standing Order','Bank Transfer','Direct Debit']);
-if(tx.amount>0&&lookup&&lookup.category==='Transfers'&&GENERIC_PAYMENT_TYPES.has(lookup.name)){
-// Extract the real merchant name from the description (strip the payment type prefix)
-const stripped=n.replace(/faster payment|standing order|bank transfer|direct debit|transfer from|transfer to/g,'').trim();
-const words=stripped.split(' ').filter(w=>w.length>1);
-const realName=words.length>0?words.slice(0,3).map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(' '):'Unknown';
-lookup={name:realName,category:'Other',isSubscription:false};confidence='low';
-}
 if(!lookup){
 const words=n.split(' ').filter(w=>w.length>2);
 lookup={name:words.slice(0,2).map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(' ')||'Unknown',category:'Other',isSubscription:false};
@@ -774,17 +764,16 @@ lookup={name:words.slice(0,2).map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(
 const isIncomeCategory=lookup.category==='Income';
 const isRefund=lookup.category==='Refund';
 const isSavings=lookup.category==='Savings';
-// Income detection: only flag as income if there's a POSITIVE signal (salary keyword, payroll company, or bank income prefix)
-// Never auto-tag based on amount alone — let buildProfile recurring scanner + Claude handle unknowns
-const INCOME_SIGNALS=['bgc','fpi','bacs credit','bank credit','salary','wages','payroll','net pay','monthly pay','direct deposit'];
-const isBankIncome=tx.amount>0&&lookup.category==='Other'&&INCOME_SIGNALS.some(p=>n.includes(p));
-const BUSINESS_INDICATORS=['ltd','plc','limited','inc','payroll','group','services','holdings','council','corp','solutions','co ','company'];
+// Detect income via UK bank payment type indicators (BGC, FPI, BACS Credit only — not generic transfer terms)
+const INCOME_PREFIXES=['bgc','fpi','bacs credit','bank credit'];
+const TRANSFER_INDICATORS=['faster payment','standing order','bank transfer','transfer to','transfer from'];
+const isPersonTransfer=this._isLikelyPersonName(lookup.name)||TRANSFER_INDICATORS.some(p=>n.includes(p));
+const isBankIncome=tx.amount>0&&lookup.category==='Other'&&!isPersonTransfer&&INCOME_PREFIXES.some(p=>n.includes(p));
+// £200+ credits that aren't matched to a spending category — but NOT person-to-person transfers
+const BUSINESS_INDICATORS=['ltd','plc','limited','inc','payroll','group','services','holdings','council','corp','solutions'];
 const looksLikeBusiness=BUSINESS_INDICATORS.some(p=>n.includes(p));
-// Only flag large credits as income if they look like a business payment (not just any £200+ credit)
-const isBusinessCredit=tx.amount>200&&lookup.category==='Other'&&!isRefund&&looksLikeBusiness;
-const detectedIncome=isIncomeCategory||isBankIncome||isBusinessCredit;
-// If we locally detected income, protect it from Claude override by marking high confidence
-if(detectedIncome&&confidence!=='high')confidence='high';
+const isLargeCredit=tx.amount>200&&lookup.category==='Other'&&!isRefund&&(!isPersonTransfer||looksLikeBusiness);
+const detectedIncome=isIncomeCategory||isBankIncome||isLargeCredit;
 return{...tx,merchant:lookup.name,category:detectedIncome?'Income':lookup.category,subcategory:lookup.subcategory||'',isSubscription:lookup.isSubscription,isIncome:detectedIncome,isRefund,isSavings,isTransfer:lookup.category==='Transfers'||isSavings,isDebt:lookup.category==='Debt Payments',confidence};
 }
 
@@ -847,37 +836,27 @@ const isSalary=salaryKeywords.some(p=>n.includes(p));
 const key=isSalary?'_salary_':n.split(' ').filter(w=>w.length>2).slice(0,2).join(' ')||'unknown';
 if(!incomeBySource[key])incomeBySource[key]={total:0,count:0,amounts:[],dates:[],merchant:isSalary?'Salary/Wages':(tx.merchant||key),isSalary};
 incomeBySource[key].total+=tx.amount;incomeBySource[key].count++;incomeBySource[key].amounts.push(tx.amount);if(tx.date)incomeBySource[key].dates.push(tx.date)});
-// Step 2: Scan positive credits >£200 for recurring patterns — strict filtering
-const BUSINESS_WORDS=['ltd','plc','limited','inc','payroll','group','services','holdings','council','corp','solutions','academy','foundation','charity'];
-const TRANSFER_WORDS=['faster payment','standing order','bank transfer','transfer to','transfer from','sent to','payment to','send'];
-const FINTECH_WORDS=['wise','revolut','monzo','paypal','starling','venmo','lemonade','skrill','neteller','circle','pingit','cashapp','xoom','worldremit','remitly','currencycloud'];
+// Step 2: Scan positive credits >£200 for recurring patterns — exclude person-to-person transfers
+const BUSINESS_WORDS=['ltd','plc','limited','inc','payroll','group','services','holdings','council','corp','solutions'];
+const TRANSFER_WORDS=['faster payment','standing order','bank transfer','transfer to','transfer from'];
 const allCredits=txs.filter(tx=>tx.amount>200&&!tx.isIncome&&!tx.isRefund&&!tx.isTransfer&&tx.date);
 const credByKey={};
 allCredits.forEach(tx=>{const key=tx.descNorm?.split(' ').filter(w=>w.length>2).slice(0,2).join(' ')||'unknown';if(!credByKey[key])credByKey[key]={total:0,count:0,dates:[],amounts:[],merchant:tx.merchant||key,desc:tx.descNorm||''};credByKey[key].total+=tx.amount;credByKey[key].count++;credByKey[key].dates.push(tx.date);credByKey[key].amounts.push(tx.amount)});
 for(const[key,src] of Object.entries(credByKey)){
-// Require 3+ occurrences for recurring income detection (not just 2)
-if(src.count>=3&&!incomeBySource[key]){
-const desc=src.desc||'';const allText=desc+' '+key+' '+(src.merchant||'').toLowerCase();
-// Skip fintech platform transfers entirely
-const isFintech=FINTECH_WORDS.some(w=>allText.includes(w));
-if(isFintech)continue;
-// Skip if merchant looks like a person name
+if(src.count>=2&&!incomeBySource[key]){
+// Skip if merchant looks like a person name and description has no business indicators
 const isPerson=this._isLikelyPersonName(src.merchant);
-if(isPerson)continue;
-// Skip if description contains transfer indicators without business context
-const hasBusinessWord=BUSINESS_WORDS.some(w=>allText.includes(w));
-const hasTransferWord=TRANSFER_WORDS.some(w=>allText.includes(w));
+const hasBusinessWord=BUSINESS_WORDS.some(w=>(src.desc||'').includes(w)||(key||'').includes(w));
+const hasTransferWord=TRANSFER_WORDS.some(w=>(src.desc||'').includes(w));
+if(isPerson&&!hasBusinessWord)continue;
 if(hasTransferWord&&!hasBusinessWord)continue;
-// Qualify if: has business word, OR salary keyword, OR consistent high-value amounts (>£300 with low variance = likely salary)
-const hasSalaryWord=salaryKeywords.some(p=>allText.includes(p));
-const amts=src.amounts||[];const avgAmt=amts.reduce((a,b)=>a+b,0)/amts.length;const amtVariance=amts.reduce((s,a)=>s+Math.pow(a-avgAmt,2),0)/amts.length;const isConsistentHighValue=avgAmt>300&&Math.sqrt(amtVariance)<avgAmt*0.15;
-if(!hasBusinessWord&&!hasSalaryWord&&!isConsistentHighValue)continue;
 src.dates.sort((a,b)=>a-b);const ints=[];for(let i=1;i<src.dates.length;i++){const d=Math.round((src.dates[i]-src.dates[i-1])/(1000*60*60*24));if(d>0)ints.push(d)}
 if(ints.length>0){const avg=ints.reduce((a,b)=>a+b,0)/ints.length;
 // Support weekly (5-9), fortnightly (12-18), and monthly (20-45) intervals
 if((avg>=5&&avg<=9)||(avg>=12&&avg<=18)||(avg>=20&&avg<=45)){
-const isSalary=hasSalaryWord||isConsistentHighValue;
+const isSalary=salaryKeywords.some(p=>(key||'').includes(p));
 incomeBySource[key]={...src,isSalary};
+// Retroactively mark these transactions as income
 allCredits.filter(tx=>(tx.descNorm?.split(' ').filter(w=>w.length>2).slice(0,2).join(' ')||'unknown')===key).forEach(tx=>{tx.isIncome=true;tx.category='Income'});
 }}}}
 const _calcFreq=(dates)=>{if(dates.length<2)return'irregular';dates.sort((a,b)=>a-b);const ints=[];for(let i=1;i<dates.length;i++){const d=Math.round((dates[i]-dates[i-1])/(1000*60*60*24));if(d>0)ints.push(d)};if(!ints.length)return'irregular';const avg=ints.reduce((a,b)=>a+b,0)/ints.length;return avg<10?'weekly':avg<18?'fortnightly':avg<45?'monthly':'irregular'};
