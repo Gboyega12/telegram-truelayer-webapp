@@ -757,6 +757,16 @@ let lookup=null;let confidence='low';
 // Sort patterns by length descending so "uber eats" matches before "uber", "amazon prime video" before "amazon"
 if(!this._sortedPatterns)this._sortedPatterns=Object.entries(MERCHANT_DB).sort((a,b)=>b[0].length-a[0].length);
 for(const[pattern,data]of this._sortedPatterns){if(data._wordBound){const p=pattern.trim();const idx=n.indexOf(p);if(idx>=0&&(idx===0||n[idx-1]===' ')&&(idx+p.length>=n.length||n[idx+p.length]===' ')){lookup=data;confidence='high';break}}else if(n.includes(pattern)){lookup=data;confidence='high';break}}
+// For CREDITS: generic payment type patterns (faster payment, standing order, etc.) are payment rails,
+// not merchants. They appear on both incoming salary and outgoing P2P. Don't let them override income detection.
+const GENERIC_PAYMENT_TYPES=new Set(['Transfer','Faster Payment','Standing Order','Bank Transfer','Direct Debit']);
+if(tx.amount>0&&lookup&&lookup.category==='Transfers'&&GENERIC_PAYMENT_TYPES.has(lookup.name)){
+// Extract the real merchant name from the description (strip the payment type prefix)
+const stripped=n.replace(/faster payment|standing order|bank transfer|direct debit|transfer from|transfer to/g,'').trim();
+const words=stripped.split(' ').filter(w=>w.length>1);
+const realName=words.length>0?words.slice(0,3).map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(' '):'Unknown';
+lookup={name:realName,category:'Other',isSubscription:false};confidence='low';
+}
 if(!lookup){
 const words=n.split(' ').filter(w=>w.length>2);
 lookup={name:words.slice(0,2).map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(' ')||'Unknown',category:'Other',isSubscription:false};
@@ -768,7 +778,7 @@ const isSavings=lookup.category==='Savings';
 // Never auto-tag based on amount alone — let buildProfile recurring scanner + Claude handle unknowns
 const INCOME_SIGNALS=['bgc','fpi','bacs credit','bank credit','salary','wages','payroll','net pay','monthly pay','direct deposit'];
 const isBankIncome=tx.amount>0&&lookup.category==='Other'&&INCOME_SIGNALS.some(p=>n.includes(p));
-const BUSINESS_INDICATORS=['ltd','plc','limited','inc','payroll','group','services','holdings','council','corp','solutions'];
+const BUSINESS_INDICATORS=['ltd','plc','limited','inc','payroll','group','services','holdings','council','corp','solutions','co ','company'];
 const looksLikeBusiness=BUSINESS_INDICATORS.some(p=>n.includes(p));
 // Only flag large credits as income if they look like a business payment (not just any £200+ credit)
 const isBusinessCredit=tx.amount>200&&lookup.category==='Other'&&!isRefund&&looksLikeBusiness;
