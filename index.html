@@ -720,6 +720,14 @@ let lookup=null;let confidence='low';
 // Sort patterns by length descending so "uber eats" matches before "uber", "amazon prime video" before "amazon"
 if(!this._sortedPatterns)this._sortedPatterns=Object.entries(MERCHANT_DB).sort((a,b)=>b[0].length-a[0].length);
 for(const[pattern,data]of this._sortedPatterns){if(data._wordBound){const p=pattern.trim();const idx=n.indexOf(p);if(idx>=0&&(idx===0||n[idx-1]===' ')&&(idx+p.length>=n.length||n[idx+p.length]===' ')){lookup=data;confidence='high';break}}else if(n.includes(pattern)){lookup=data;confidence='high';break}}
+// For CREDITS: generic payment rails (faster payment, standing order, etc.) are not merchants.
+// Reset to 'Other' so income detection can evaluate the real sender.
+if(tx.amount>0&&lookup&&lookup.category==='Transfers'&&['Transfer','Faster Payment','Standing Order','Bank Transfer'].includes(lookup.name)){
+const stripped=n.replace(/faster payment|standing order|bank transfer|transfer from|transfer to/g,'').trim();
+const words=stripped.split(' ').filter(w=>w.length>1);
+const realName=words.length>0?words.slice(0,3).map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(' '):'Unknown';
+lookup={name:realName,category:'Other',isSubscription:false};confidence='low';
+}
 if(!lookup){
 const words=n.split(' ').filter(w=>w.length>2);
 lookup={name:words.slice(0,2).map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(' ')||'Unknown',category:'Other',isSubscription:false};
