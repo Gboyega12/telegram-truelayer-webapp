@@ -373,6 +373,25 @@ const MERCHANT_DB={
 'dividend':{name:'Dividend',category:'Income',isSubscription:false},
 'hmrc':{name:'HMRC',category:'Income',isSubscription:false},
 'tax refund':{name:'Tax Refund',category:'Income',isSubscription:false},
+'bacs':{name:'BACS Payment',category:'Income',isSubscription:false},
+'chaps':{name:'CHAPS Payment',category:'Income',isSubscription:false},
+'dwp':{name:'DWP',category:'Income',isSubscription:false},
+'universal credit':{name:'Universal Credit',category:'Income',isSubscription:false},
+'child benefit':{name:'Child Benefit',category:'Income',isSubscription:false},
+'tax credits':{name:'Tax Credits',category:'Income',isSubscription:false},
+'pension':{name:'Pension',category:'Income',isSubscription:false},
+'state pension':{name:'State Pension',category:'Income',isSubscription:false},
+'jobseeker':{name:'Jobseekers Allowance',category:'Income',isSubscription:false},
+'sage payroll':{name:'Sage Payroll',category:'Income',isSubscription:false},
+'xero payroll':{name:'Xero Payroll',category:'Income',isSubscription:false},
+'brightpay':{name:'BrightPay',category:'Income',isSubscription:false},
+'moorepay':{name:'Moorepay',category:'Income',isSubscription:false},
+'adp payroll':{name:'ADP Payroll',category:'Income',isSubscription:false},
+'ceridian':{name:'Ceridian',category:'Income',isSubscription:false},
+'iris payroll':{name:'IRIS Payroll',category:'Income',isSubscription:false},
+'autopay':{name:'Autopay',category:'Income',isSubscription:false},
+'payroll solutions':{name:'Payroll Solutions',category:'Income',isSubscription:false},
+'payroll services':{name:'Payroll Services',category:'Income',isSubscription:false},
 
 // REFUNDS — credits but not income (excluded from income calculations)
 'refund':{name:'Refund',category:'Refund',isSubscription:false},
@@ -689,7 +708,7 @@ if(m.includes('transfer')||m.includes('faster payment')||m.includes('standing or
 const words=m.split(/\s+/).filter(w=>w.length>0);
 if(words.length>=1&&words.length<=3&&words.every(w=>/^[a-z'-]+$/.test(w))&&!words.some(w=>w.length>12)){
 // Likely a person name if it's short alphabetic words with no numbers or special chars
-const brandIndicators=['ltd','inc','plc','limited','store','shop','market','cafe','restaurant','gym','club','online','digital','mobile','energy','water','insurance','finance'];
+const brandIndicators=['ltd','inc','plc','limited','corp','llp','store','shop','market','cafe','restaurant','gym','club','online','digital','mobile','energy','water','insurance','finance','payroll','services','solutions','group','holdings','accounts','consulting','associates','partners','recruitment','staffing','agency','council','government','bacs','pension'];
 if(!words.some(w=>brandIndicators.includes(w)))return true;
 }
 return false;
@@ -702,14 +721,17 @@ let lookup=null;let confidence='low';
 if(!this._sortedPatterns)this._sortedPatterns=Object.entries(MERCHANT_DB).sort((a,b)=>b[0].length-a[0].length);
 for(const[pattern,data]of this._sortedPatterns){if(data._wordBound){const p=pattern.trim();const idx=n.indexOf(p);if(idx>=0&&(idx===0||n[idx-1]===' ')&&(idx+p.length>=n.length||n[idx+p.length]===' ')){lookup=data;confidence='high';break}}else if(n.includes(pattern)){lookup=data;confidence='high';break}}
 if(!lookup){
-const words=n.split(' ').filter(w=>w.length>2);
-lookup={name:words.slice(0,2).map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(' ')||'Unknown',category:'Other',isSubscription:false};
+const companyPattern=/\b(ltd|plc|limited|inc|corp|llp|group|holdings)\b/;
+const isCompany=companyPattern.test(n);
+const words=isCompany?n.split(' ').filter(w=>w.length>0):n.split(' ').filter(w=>w.length>2);
+lookup={name:words.slice(0,4).map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(' ')||'Unknown',category:'Other',isSubscription:false};
 }
 const isIncomeCategory=lookup.category==='Income';
 const isRefund=lookup.category==='Refund';
 const isSavings=lookup.category==='Savings';
 const isLargeCredit=tx.amount>1000&&lookup.category==='Other';
-return{...tx,merchant:lookup.name,category:isLargeCredit?'Income':lookup.category,subcategory:lookup.subcategory||'',isSubscription:lookup.isSubscription,isIncome:isIncomeCategory||isLargeCredit,isRefund,isSavings,isTransfer:lookup.category==='Transfers'||isSavings,isDebt:lookup.category==='Debt Payments',confidence};
+const isCompanyCredit=tx.amount>0&&lookup.category==='Other'&&/\b(ltd|plc|limited|inc|corp|llp|group|holdings)\b/.test(n);
+return{...tx,merchant:lookup.name,category:(isLargeCredit||isCompanyCredit)?'Income':lookup.category,subcategory:lookup.subcategory||'',isSubscription:lookup.isSubscription,isIncome:isIncomeCategory||isLargeCredit||isCompanyCredit,isRefund,isSavings,isTransfer:lookup.category==='Transfers'||isSavings,isDebt:lookup.category==='Debt Payments',confidence};
 }
 
 detectRecurring(txs){
