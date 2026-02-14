@@ -760,7 +760,7 @@ buildProfile(txs,recurring){
 const income=txs.filter(tx=>tx.isIncome&&!tx.isRefund&&tx.amount>0);
 const spending=txs.filter(tx=>tx.amount<0&&!tx.isTransfer&&!tx.isRefund);
 const byCat={};
-spending.forEach(tx=>{const k=tx.category||'Other';if(!byCat[k])byCat[k]={total:0,count:0};byCat[k].total+=Math.abs(tx.amount);byCat[k].count++});
+spending.forEach(tx=>{const k=tx.category||'Other';if(!byCat[k])byCat[k]={total:0,count:0,txs:[]};byCat[k].total+=Math.abs(tx.amount);byCat[k].count++;byCat[k].txs.push(tx)});
 const totalIncome=income.reduce((s,tx)=>s+tx.amount,0);
 const totalSpending=spending.reduce((s,tx)=>s+Math.abs(tx.amount),0);
 const surplus=totalIncome-totalSpending;
@@ -815,8 +815,8 @@ const nonDiscretionary={total:0,items:[]};
 const discretionary={total:0,items:[]};
 for(const[cat,data]of Object.entries(byCat)){
 const monthly=mo(data.total);
-if(nonDiscretionaryCats.includes(cat)||(cat==='Subscriptions')){nonDiscretionary.total+=monthly;nonDiscretionary.items.push({category:cat,monthly})}
-else if(cat!=='Other'&&cat!=='Transfers'&&cat!=='Savings'&&cat!=='Refund'){discretionary.total+=monthly;discretionary.items.push({category:cat,monthly})}
+if(nonDiscretionaryCats.includes(cat)||(cat==='Subscriptions')){nonDiscretionary.total+=monthly;nonDiscretionary.items.push({category:cat,monthly,txs:data.txs||[]})}
+else if(cat!=='Other'&&cat!=='Transfers'&&cat!=='Savings'&&cat!=='Refund'){discretionary.total+=monthly;discretionary.items.push({category:cat,monthly,txs:data.txs||[]})}
 }
 // Add subscription + debt from recurring (more accurate than category totals)
 const subMo=Math.round(subTotal);const debtMo=Math.round(debtTotal);
@@ -1036,29 +1036,32 @@ const m=profile.monthly;
 
 // 1. Dormant/low-value subscriptions — identify subs with lowest avg amount (likely forgotten)
 const subs=profile.subscriptions||[];
-if(subs.length>3){const cheapest=subs.filter(s=>s.averageAmount<15).slice(0,3);if(cheapest.length>0){const total=Math.round(cheapest.reduce((s,r)=>s+r.averageAmount,0));moves.push({action:'Review '+cheapest.length+' low-cost subscriptions: '+cheapest.map(s=>s.merchant+' (\u00a3'+s.averageAmount+')').join(', '),annualImpact:total*12,effort:'low',unlocks:'Quick wins \u2014 often forgotten services that add up',type:'subscription'})}}
+if(subs.length>3){const cheapest=subs.filter(s=>s.averageAmount<15).slice(0,3);if(cheapest.length>0){const total=Math.round(cheapest.reduce((s,r)=>s+r.averageAmount,0));moves.push({action:'Review '+cheapest.length+' low-cost subscriptions: '+cheapest.map(s=>s.merchant+' (\u00a3'+s.averageAmount+')').join(', '),annualImpact:total*12,effort:'low',unlocks:'Quick wins \u2014 often forgotten services that add up',type:'subscription',details:{strategy:'Subscription audit',items:cheapest.map(s=>({name:s.merchant,amount:s.averageAmount,frequency:'monthly'})),monthlyAmount:total,reasoning:'These '+cheapest.length+' subscriptions total \u00a3'+total+'/mo. Low-cost subscriptions often go unnoticed but compound over time. Cancelling unused ones frees up \u00a3'+(total*12)+'/yr with zero lifestyle impact.',steps:['Review each subscription for recent usage','Cancel any you haven\u2019t used in 30+ days','Set a calendar reminder to audit subscriptions quarterly']}})}}
 
 // 2. Food delivery reduction — specific based on actual order value
-if(m.foodDelivery>40){const avgOrder=m.foodDelivery/(profile.topMerchants?.filter(tm=>['Deliveroo','Uber Eats','Just Eat'].includes(tm.merchant)).reduce((s,tm)=>s+tm.count,0)/Math.max(1,profile.monthSpan)||4);const cutOrders=Math.ceil(m.foodDelivery*0.3/avgOrder);moves.push({action:'Swap '+cutOrders+' delivery orders per month for home cooking',annualImpact:Math.round(m.foodDelivery*0.3*12),effort:'medium',unlocks:m.groceries>0?'Your grocery spend shows you already cook \u2014 just shift the balance':'Redirects \u00a3'+Math.round(m.foodDelivery*0.3)+'/mo to other goals',type:'convenience'})}
+if(m.foodDelivery>40){const deliveryMerchants=profile.topMerchants?.filter(tm=>['Deliveroo','Uber Eats','Just Eat'].includes(tm.merchant))||[];const totalOrders=deliveryMerchants.reduce((s,tm)=>s+tm.count,0)/Math.max(1,profile.monthSpan)||4;const avgOrder=m.foodDelivery/totalOrders;const cutOrders=Math.ceil(m.foodDelivery*0.3/avgOrder);const monthlySave=Math.round(m.foodDelivery*0.3);moves.push({action:'Swap '+cutOrders+' delivery orders per month for home cooking',annualImpact:Math.round(monthlySave*12),effort:'medium',unlocks:m.groceries>0?'Your grocery spend shows you already cook \u2014 just shift the balance':'Redirects \u00a3'+monthlySave+'/mo to other goals',type:'convenience',details:{strategy:'Delivery-to-cooking swap',items:deliveryMerchants.map(tm=>({name:tm.merchant,amount:Math.round(tm.total/profile.monthSpan),frequency:'monthly'})),monthlyAmount:m.foodDelivery,targetReduction:monthlySave,reasoning:'You\u2019re spending \u00a3'+m.foodDelivery+'/mo on delivery across '+deliveryMerchants.length+' service'+(deliveryMerchants.length>1?'s':'')+'. The average order is \u00a3'+Math.round(avgOrder)+'. Swapping just '+cutOrders+' orders/mo for home cooking saves \u00a3'+monthlySave+'/mo (\u00a3'+(monthlySave*12)+'/yr) while still enjoying delivery '+(Math.round(totalOrders)-cutOrders)+'x/mo.'+(m.groceries>0?' Your existing grocery spend of \u00a3'+m.groceries+'/mo shows you already cook \u2014 this just shifts the balance.':''),steps:['Identify your most frequent delivery days','Prep easy meals for those specific days','Keep delivery for social occasions or genuine treats','Track progress weekly for the first month']}})}
 
 // 3. Debt acceleration — smallest debt first
 const debts=profile.debtPayments||[];
-if(debts.length>=2){const smallest=debts.sort((a,b)=>a.averageAmount-b.averageAmount)[0];moves.push({action:'Focus on clearing '+smallest.merchant+' first (\u00a3'+smallest.averageAmount+'/mo)',annualImpact:Math.round(smallest.averageAmount*12),effort:'medium',unlocks:'Once cleared, redirect \u00a3'+smallest.averageAmount+'/mo to the next debt or savings',type:'debt'})}
+if(debts.length>=2){const sortedDebts=[...debts].sort((a,b)=>a.averageAmount-b.averageAmount);const smallest=sortedDebts[0];const totalDebtMo=Math.round(debts.reduce((s,d)=>s+d.averageAmount,0));const secondDebt=sortedDebts.length>1?sortedDebts[1]:null;moves.push({action:'Focus on clearing '+smallest.merchant+' first (\u00a3'+smallest.averageAmount+'/mo)',annualImpact:Math.round(smallest.averageAmount*12),effort:'medium',unlocks:'Once cleared, redirect \u00a3'+smallest.averageAmount+'/mo to the next debt or savings',type:'debt',details:{strategy:'Debt Snowball Method',items:sortedDebts.map(d=>({name:d.merchant,amount:d.averageAmount,frequency:'monthly'})),monthlyAmount:totalDebtMo,targetDebt:smallest.merchant,targetAmount:smallest.averageAmount,reasoning:'You have '+debts.length+' active debts totalling \u00a3'+totalDebtMo+'/mo. The snowball method targets your smallest payment first (\u00a3'+smallest.averageAmount+'/mo to '+smallest.merchant+'). Once cleared, that \u00a3'+smallest.averageAmount+' rolls into '+(secondDebt?secondDebt.merchant+' (\u00a3'+secondDebt.averageAmount+'/mo)':'your next debt')+', accelerating payoff. This creates momentum and frees up cashflow progressively.',steps:['Continue minimum payments on all debts','Put any extra funds toward '+smallest.merchant+' (\u00a3'+smallest.averageAmount+'/mo)','Once '+smallest.merchant+' is cleared, add its payment to '+(secondDebt?secondDebt.merchant:'the next debt'),'Repeat until all debts are cleared'],effect:'Clearing '+smallest.merchant+' first frees \u00a3'+smallest.averageAmount+'/mo. Over 12 months, that\u2019s \u00a3'+(smallest.averageAmount*12)+' redirected to accelerate remaining debt payoff or build savings.'}})}
+
 
 // 4. Hidden subscriptions from behavioral patterns
 const hidden=behavioralPatterns.filter(p=>p.pattern==='hidden_subscription');
-if(hidden.length>0){const top=hidden[0];moves.push({action:'Your '+top.merchant+' habit is a hidden \u00a3'+top.monthlyAmount+'/mo subscription',annualImpact:Math.round(top.monthlyAmount*0.3*12),effort:'medium',unlocks:'Reducing by 30% saves \u00a3'+Math.round(top.monthlyAmount*0.3)+'/mo without eliminating it',type:'behavioral'})}
+if(hidden.length>0){const top=hidden[0];const save30=Math.round(top.monthlyAmount*0.3);moves.push({action:'Your '+top.merchant+' habit is a hidden \u00a3'+top.monthlyAmount+'/mo subscription',annualImpact:Math.round(save30*12),effort:'medium',unlocks:'Reducing by 30% saves \u00a3'+save30+'/mo without eliminating it',type:'behavioral',details:{strategy:'Habitual spending reduction',items:[{name:top.merchant,amount:top.monthlyAmount,frequency:'monthly'}],monthlyAmount:top.monthlyAmount,targetReduction:save30,reasoning:'Your '+top.merchant+' spending of \u00a3'+top.monthlyAmount+'/mo behaves like a subscription \u2014 consistent, recurring, and often automatic. A 30% reduction saves \u00a3'+save30+'/mo (\u00a3'+(save30*12)+'/yr) while keeping the habit at a sustainable level.',steps:['Set a weekly budget of \u00a3'+Math.round(top.monthlyAmount*0.7/4)+' for '+top.merchant,'Track each purchase for 2 weeks to build awareness','Replace 1-2 visits per week with a free or cheaper alternative','Review progress after 30 days']}})}
 
 // 5. Payday splurge mitigation
 const splurge=behavioralPatterns.find(p=>p.pattern==='payday_splurge');
-if(splurge){const premium=parseInt(splurge.detail.match(/\d+/)?.[0]||'0');if(premium>30){moves.push({action:'Delay non-essential purchases 48 hours after payday',annualImpact:Math.round(premium*0.5*12),effort:'low',unlocks:'Your post-payday spike adds \u00a3'+premium+'/mo \u2014 a short delay cuts impulse buys in half',type:'behavioral'})}}
+if(splurge){const premium=parseInt(splurge.detail.match(/\d+/)?.[0]||'0');if(premium>30){const save50=Math.round(premium*0.5);moves.push({action:'Delay non-essential purchases 48 hours after payday',annualImpact:Math.round(save50*12),effort:'low',unlocks:'Your post-payday spike adds \u00a3'+premium+'/mo \u2014 a short delay cuts impulse buys in half',type:'behavioral',details:{strategy:'48-hour payday rule',items:[{name:'Post-payday premium spending',amount:premium,frequency:'monthly'}],monthlyAmount:premium,targetReduction:save50,reasoning:'Your spending spikes significantly in the days after payday, costing an extra \u00a3'+premium+'/mo compared to your baseline. Research shows a simple 48-hour delay eliminates roughly half of impulse purchases. This saves \u00a3'+save50+'/mo (\u00a3'+(save50*12)+'/yr) with minimal effort.',steps:['When payday hits, move discretionary funds to a separate pot','Wait 48 hours before any non-essential purchase over \u00a320','After 48 hours, buy only items you still want','Track how many purchases you skip \u2014 most won\u2019t feel like sacrifices']}})}}
+
+
 
 // 6. Eating out reduction
-if((m.eatingOut||0)>80){const coffeeShops=profile.topMerchants?.filter(tm=>['Starbucks','Costa','Pret','Greggs','Caffe Nero'].includes(tm.merchant))||[];const coffeeMonthly=coffeeShops.reduce((s,tm)=>s+Math.round(tm.total/profile.monthSpan),0);if(coffeeMonthly>20){moves.push({action:'Your coffee habit: \u00a3'+coffeeMonthly+'/mo across '+coffeeShops.length+' shop'+(coffeeShops.length>1?'s':''),annualImpact:Math.round(coffeeMonthly*0.5*12),effort:'low',unlocks:'Making coffee 3x/week instead saves \u00a3'+Math.round(coffeeMonthly*0.5)+'/mo',type:'convenience'})}
+if((m.eatingOut||0)>80){const coffeeShops=profile.topMerchants?.filter(tm=>['Starbucks','Costa','Pret','Greggs','Caffe Nero'].includes(tm.merchant))||[];const coffeeMonthly=coffeeShops.reduce((s,tm)=>s+Math.round(tm.total/profile.monthSpan),0);if(coffeeMonthly>20){const coffeeSave=Math.round(coffeeMonthly*0.5);moves.push({action:'Your coffee habit: \u00a3'+coffeeMonthly+'/mo across '+coffeeShops.length+' shop'+(coffeeShops.length>1?'s':''),annualImpact:Math.round(coffeeSave*12),effort:'low',unlocks:'Making coffee 3x/week instead saves \u00a3'+coffeeSave+'/mo',type:'convenience',details:{strategy:'Coffee spend optimisation',items:coffeeShops.map(tm=>({name:tm.merchant,amount:Math.round(tm.total/profile.monthSpan),frequency:'monthly'})),monthlyAmount:coffeeMonthly,targetReduction:coffeeSave,reasoning:'You\u2019re spending \u00a3'+coffeeMonthly+'/mo across '+coffeeShops.length+' coffee shop'+(coffeeShops.length>1?'s':'')+'. Making coffee at home 3 days per week saves roughly 50%, or \u00a3'+coffeeSave+'/mo (\u00a3'+(coffeeSave*12)+'/yr). You still get to enjoy coffee out on the days that matter.',steps:['Get a good travel mug and coffee you enjoy at home','Choose 3 specific days per week to make coffee at home','Keep your coffee-out days for social or treat occasions','A \u00a320 bag of quality beans makes ~30 cups vs \u00a33-4 each out']}})}
 }
 
 // 7. Shopping impulse control
-if((m.shopping||0)>120){const impulsePattern=behavioralPatterns.find(p=>p.pattern==='impulse_cluster');moves.push({action:'Apply a 24-hour rule to purchases over \u00a330',annualImpact:Math.round((m.shopping||0)*0.2*12),effort:'low',unlocks:impulsePattern?impulsePattern.detail:'Reduces impulse purchases by roughly 20%',type:'behavioral'})}
+if((m.shopping||0)>120){const impulsePattern=behavioralPatterns.find(p=>p.pattern==='impulse_cluster');const shopSave=Math.round((m.shopping||0)*0.2);moves.push({action:'Apply a 24-hour rule to purchases over \u00a330',annualImpact:Math.round(shopSave*12),effort:'low',unlocks:impulsePattern?impulsePattern.detail:'Reduces impulse purchases by roughly 20%',type:'behavioral',details:{strategy:'24-hour impulse rule',items:[{name:'Shopping spend',amount:m.shopping,frequency:'monthly'}],monthlyAmount:m.shopping,targetReduction:shopSave,reasoning:'Your shopping spend of \u00a3'+m.shopping+'/mo is above average. '+(impulsePattern?impulsePattern.detail+' ':'')+'Research shows that waiting 24 hours before purchases over \u00a330 eliminates about 20% of impulse buys. This saves \u00a3'+shopSave+'/mo (\u00a3'+(shopSave*12)+'/yr) without any real sacrifice \u2014 you\u2019ll only skip things you didn\u2019t truly want.',steps:['When you find something over \u00a330, add it to a wishlist instead of buying','Wait 24 hours before revisiting','If you still want it after 24 hours, buy it guilt-free','Track how many items you skip \u2014 most won\u2019t feel like losses']}})}
 
 // Rank by impact/effort ratio and return top 3
 const effortMultiplier={low:1,medium:2,high:3};
@@ -1211,13 +1214,48 @@ return(<div className="card-box slide-up" style={{border:'1px solid '+scoreColor
 <p style={{color:'var(--text2)',fontSize:'0.85rem',lineHeight:1.6,maxWidth:'320px',margin:'0 auto'}}>{verdict}</p></div>
 <div style={{display:'flex',flexDirection:'column',gap:'0.75rem'}}>{breakdown.map((d,i)=>{const dimColor=d.score>=70?'var(--mint)':d.score>=40?'var(--accent)':'var(--coral)';return(<div key={i} style={{padding:'0.6rem',background:'rgba(255,255,255,0.02)',borderRadius:'6px'}}><div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'0.3rem'}}><span style={{color:'#fff',fontSize:'0.85rem',fontWeight:500}}>{d.label}</span><span className="mono" style={{fontSize:'0.8rem',fontWeight:700,color:dimColor}}>{d.score}<span style={{fontSize:'0.6rem',color:'var(--muted)'}}>/100</span></span></div><div style={{height:'5px',background:'rgba(255,255,255,0.04)',borderRadius:'3px',overflow:'hidden',marginBottom:'0.3rem'}}><div style={{height:'100%',width:d.score+'%',background:dimColor,borderRadius:'3px',transition:'width 0.5s'}}/></div><p style={{color:'var(--dim)',fontSize:'0.75rem',lineHeight:1.5}}>{d.detail}</p></div>)})}</div></div>)};
 
-// MONEY MOVES COMPONENT
+// MONEY MOVES COMPONENT — with Approve / Modify actions
 const MoneyMovesCard=({moves})=>{if(!moves||moves.length===0)return null;
+const[approvedIdx,setApprovedIdx]=useState(null);
+const[modifyIdx,setModifyIdx]=useState(null);
 const effortColor={low:'var(--mint)',medium:'var(--accent)',high:'var(--coral)'};
+const handleApprove=(i)=>{setApprovedIdx(i);setModifyIdx(null);setTimeout(()=>setApprovedIdx(null),4000)};
+const handleModify=(i)=>{setModifyIdx(prev=>prev===i?null:i);setApprovedIdx(null)};
 return(<div className="card-box slide-up" style={{border:'1px solid rgba(232,200,114,0.2)'}}><div className="section-title" style={{color:'var(--accent)'}}>Your Top Money Moves</div><p style={{color:'var(--dim)',fontSize:'0.78rem',marginBottom:'1rem'}}>Ranked by impact. Start with #1.</p>
 <div style={{display:'flex',flexDirection:'column',gap:'1rem'}}>{moves.map((m,i)=>(<div key={i} style={{padding:'0.9rem',background:'rgba(255,255,255,0.02)',border:'1px solid var(--border)',borderRadius:'8px'}}><div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:'0.5rem'}}><div style={{display:'flex',alignItems:'center',gap:'0.5rem'}}><span className="mono" style={{fontSize:'0.7rem',color:'var(--accent)',background:'rgba(232,200,114,0.1)',padding:'0.15rem 0.4rem',borderRadius:'4px'}}>#{i+1}</span><span style={{fontSize:'0.75rem',color:effortColor[m.effort]}}>{m.effort} effort</span></div><span className="mono" style={{fontSize:'0.85rem',fontWeight:700,color:'var(--mint)'}}>+£{m.annualImpact.toLocaleString()}/yr</span></div>
 <p style={{color:'#fff',fontSize:'0.88rem',fontWeight:500,marginBottom:'0.35rem',lineHeight:1.5}}>{m.action}</p>
-<p style={{color:'var(--dim)',fontSize:'0.78rem',lineHeight:1.5}}>{m.unlocks}</p></div>))}</div></div>)};
+<p style={{color:'var(--dim)',fontSize:'0.78rem',lineHeight:1.5,marginBottom:'0.6rem'}}>{m.unlocks}</p>
+
+<div style={{display:'flex',gap:'0.5rem'}}>
+<button onClick={()=>handleApprove(i)} className="mono" style={{flex:1,padding:'0.5rem',background:approvedIdx===i?'rgba(114,232,176,0.15)':'rgba(114,232,176,0.08)',color:'var(--mint)',border:'1px solid rgba(114,232,176,0.2)',borderRadius:'6px',fontSize:'0.7rem',fontWeight:600,cursor:'pointer',transition:'all 0.2s'}}>{approvedIdx===i?'Noted!':'Approve'}</button>
+<button onClick={()=>handleModify(i)} className="mono" style={{flex:1,padding:'0.5rem',background:modifyIdx===i?'rgba(232,200,114,0.15)':'rgba(232,200,114,0.08)',color:'var(--accent)',border:'1px solid rgba(232,200,114,0.2)',borderRadius:'6px',fontSize:'0.7rem',fontWeight:600,cursor:'pointer',transition:'all 0.2s'}}>{modifyIdx===i?'Close':'Modify'}</button>
+</div>
+
+{approvedIdx===i&&(<div style={{marginTop:'0.6rem',padding:'0.75rem',background:'rgba(114,232,176,0.06)',border:'1px solid rgba(114,232,176,0.15)',borderRadius:'8px',animation:'fadeIn .3s ease'}}>
+<p style={{color:'var(--mint)',fontSize:'0.82rem',fontWeight:600,marginBottom:'0.3rem'}}>You're on the right track.</p>
+<p style={{color:'var(--dim)',fontSize:'0.78rem',lineHeight:1.6}}>When Bocy launches, you'll be able to set this as an active goal, track your progress in real-time, and get personalised nudges to stay on course. We'll remember this choice.</p>
+</div>)}
+
+{modifyIdx===i&&m.details&&(<div style={{marginTop:'0.6rem',padding:'0.85rem',background:'rgba(232,200,114,0.04)',border:'1px solid rgba(232,200,114,0.12)',borderRadius:'8px',animation:'fadeIn .3s ease'}}>
+<div style={{display:'flex',alignItems:'center',gap:'0.4rem',marginBottom:'0.6rem'}}><span style={{color:'var(--accent)',fontSize:'0.7rem'}}>&#9670;</span><p style={{color:'var(--accent)',fontSize:'0.82rem',fontWeight:600}}>{m.details.strategy}</p></div>
+
+{m.details.items&&m.details.items.length>0&&(<div style={{marginBottom:'0.7rem'}}><p style={{color:'var(--muted)',fontSize:'0.65rem',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:'0.35rem'}}>Breakdown</p>
+{m.details.items.map((item,j)=>(<div key={j} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'0.3rem 0',borderBottom:'1px solid rgba(255,255,255,0.04)'}}><span style={{color:'var(--text2)',fontSize:'0.78rem'}}>{item.name}</span><span className="mono" style={{color:'var(--accent)',fontSize:'0.78rem'}}>£{item.amount}/{item.frequency==='monthly'?'mo':'wk'}</span></div>))}
+<div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'0.4rem 0',marginTop:'0.1rem'}}><span style={{color:'#fff',fontSize:'0.78rem',fontWeight:600}}>Total</span><span className="mono" style={{color:'#fff',fontSize:'0.78rem',fontWeight:600}}>£{m.details.monthlyAmount}/mo</span></div>
+{m.details.targetReduction&&<div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'0.3rem 0'}}><span style={{color:'var(--mint)',fontSize:'0.78rem',fontWeight:500}}>Target saving</span><span className="mono" style={{color:'var(--mint)',fontSize:'0.78rem',fontWeight:600}}>-£{m.details.targetReduction}/mo</span></div>}
+</div>)}
+
+<div style={{marginBottom:'0.7rem'}}><p style={{color:'var(--muted)',fontSize:'0.65rem',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:'0.35rem'}}>Why this works</p>
+<p style={{color:'var(--dim)',fontSize:'0.78rem',lineHeight:1.65}}>{m.details.reasoning}</p></div>
+
+{m.details.effect&&(<div style={{marginBottom:'0.7rem'}}><p style={{color:'var(--muted)',fontSize:'0.65rem',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:'0.35rem'}}>Effect on your finances</p>
+<p style={{color:'var(--dim)',fontSize:'0.78rem',lineHeight:1.65}}>{m.details.effect}</p></div>)}
+
+{m.details.steps&&m.details.steps.length>0&&(<div><p style={{color:'var(--muted)',fontSize:'0.65rem',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:'0.35rem'}}>Action plan</p>
+<div style={{display:'flex',flexDirection:'column',gap:'0.3rem'}}>{m.details.steps.map((step,k)=>(<div key={k} style={{display:'flex',gap:'0.4rem',alignItems:'flex-start'}}><span className="mono" style={{color:'var(--accent)',fontSize:'0.65rem',marginTop:'0.1rem'}}>{k+1}.</span><p style={{color:'var(--text2)',fontSize:'0.78rem',lineHeight:1.5}}>{step}</p></div>))}</div></div>)}
+</div>)}
+
+</div>))}</div></div>)};
 
 // PLAYBOOK COMPONENT
 const PlaybookCard=({archetype,playbook})=>{if(!playbook)return null;
@@ -1247,12 +1285,22 @@ return(<div className="card-box slide-up" style={{border:'1px solid rgba(114,232
 <div style={{textAlign:'center',marginBottom:'1.25rem',paddingBottom:'1rem',borderBottom:'1px solid var(--border)'}}><p className="mono" style={{fontSize:'2rem',fontWeight:700,color:'var(--mint)'}}>£{monthlyIncome.toLocaleString()}</p><p style={{fontSize:'0.8rem',color:'var(--dim)'}}>total monthly income</p></div>
 <div style={{display:'flex',flexDirection:'column',gap:'0.85rem'}}>{incomeSources.map((src,i)=>(<div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'0.6rem',background:src.isPrimary?'rgba(114,232,176,0.06)':'rgba(255,255,255,0.02)',borderRadius:'6px',border:src.isPrimary?'1px solid rgba(114,232,176,0.15)':'1px solid transparent'}}><div><p style={{color:'#fff',fontSize:'0.88rem',fontWeight:src.isPrimary?600:500}}>{src.source}</p><div style={{display:'flex',gap:'0.4rem',alignItems:'center',marginTop:'0.15rem'}}><span className="mono" style={{fontSize:'0.65rem',color:freqColor[src.frequency],background:freqColor[src.frequency]+'15',padding:'0.1rem 0.4rem',borderRadius:'3px'}}>{freqLabel[src.frequency]||src.frequency}</span>{src.isPrimary&&<span className="mono" style={{fontSize:'0.55rem',color:'var(--mint)',background:'rgba(114,232,176,0.12)',padding:'0.1rem 0.4rem',borderRadius:'3px'}}>PRIMARY</span>}</div></div><div style={{textAlign:'right'}}><p className="mono" style={{color:'var(--mint)',fontSize:'0.9rem',fontWeight:600}}>£{src.avgAmount.toLocaleString()}</p><p style={{color:'var(--muted)',fontSize:'0.7rem'}}>{src.frequency==='weekly'?'per week':src.frequency==='fortnightly'?'every 2 weeks':'per month'}</p></div></div>))}</div></div>)};
 
-// BUDGET REALITY COMPONENT — non-discretionary vs what's left
+// BUDGET REALITY COMPONENT — non-discretionary vs what's left, with transaction drill-down
 const BudgetRealityCard=({budgetReality,monthlyIncome})=>{if(!budgetReality)return null;
+const[expandedCat,setExpandedCat]=useState(null);
 const{nonDiscretionary,discretionary,leftToDecide}=budgetReality;
 const ndPct=monthlyIncome>0?Math.round((nonDiscretionary.total/monthlyIncome)*100):0;
 const discPct=monthlyIncome>0?Math.round((discretionary.total/monthlyIncome)*100):0;
 const leftPct=monthlyIncome>0?Math.round((leftToDecide/monthlyIncome)*100):0;
+const toggleCat=(cat)=>setExpandedCat(prev=>prev===cat?null:cat);
+const fmtDate=(d)=>{if(!d)return'';const dt=d instanceof Date?d:new Date(d);return dt.toLocaleDateString('en-GB',{day:'numeric',month:'short'})};
+const renderItems=(items,color,section)=>items.filter(i=>i.monthly>0).map((item,i)=>{const key=section+'-'+item.category;const isOpen=expandedCat===key;const txs=(item.txs||[]).sort((a,b)=>Math.abs(b.amount)-Math.abs(a.amount));return(<div key={i}>
+<div onClick={()=>toggleCat(key)} style={{display:'flex',justifyContent:'space-between',alignItems:'center',cursor:'pointer',padding:'0.45rem 0.3rem',borderRadius:'6px',transition:'background 0.2s',background:isOpen?'rgba(255,255,255,0.03)':'transparent'}}><div style={{display:'flex',alignItems:'center',gap:'0.4rem'}}><span style={{color:color,fontSize:'0.6rem',transition:'transform 0.2s',transform:isOpen?'rotate(90deg)':'rotate(0deg)'}}>&#9654;</span><span style={{color:'var(--text2)',fontSize:'0.82rem'}}>{item.category}</span><span style={{color:'var(--muted)',fontSize:'0.65rem'}}>({txs.length})</span></div><span className="mono" style={{color:color,fontSize:'0.82rem'}}>£{item.monthly}</span></div>
+{isOpen&&txs.length>0&&(<div style={{marginLeft:'1rem',marginBottom:'0.5rem',paddingLeft:'0.5rem',borderLeft:'2px solid '+color+'30',animation:'fadeIn .3s ease'}}>
+{txs.slice(0,8).map((tx,j)=>(<div key={j} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'0.3rem 0',borderBottom:'1px solid rgba(255,255,255,0.03)'}}><div style={{flex:1,minWidth:0}}><p style={{color:'var(--text2)',fontSize:'0.75rem',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{tx.merchant||tx.description}</p>{tx.date&&<p style={{color:'var(--muted)',fontSize:'0.6rem'}}>{fmtDate(tx.date)}</p>}</div><span className="mono" style={{color:color,fontSize:'0.75rem',marginLeft:'0.5rem'}}>£{Math.abs(tx.amount).toFixed(2)}</span></div>))}
+{txs.length>8&&<p style={{color:'var(--muted)',fontSize:'0.65rem',textAlign:'center',padding:'0.3rem 0'}}>+{txs.length-8} more transactions</p>}
+</div>)}
+</div>)});
 return(<div className="card-box slide-up" style={{border:'1px solid rgba(232,200,114,0.15)'}}><div className="section-title" style={{color:'var(--accent)'}}>Your Budget Reality</div>
 
 <div style={{display:'flex',height:'8px',borderRadius:'4px',overflow:'hidden',marginBottom:'1.25rem',background:'rgba(255,255,255,0.04)'}}>
@@ -1268,10 +1316,11 @@ return(<div className="card-box slide-up" style={{border:'1px solid rgba(232,200
 </div>
 
 <div style={{marginBottom:'1rem'}}><p style={{color:'var(--muted)',fontSize:'0.7rem',marginBottom:'0.5rem',textTransform:'uppercase',letterSpacing:'0.1em'}}>Non-negotiable breakdown</p>
-<div style={{display:'flex',flexDirection:'column',gap:'0.4rem'}}>{nonDiscretionary.items.filter(i=>i.monthly>0).map((item,i)=>(<div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><span style={{color:'var(--text2)',fontSize:'0.82rem'}}>{item.category}</span><span className="mono" style={{color:'var(--coral)',fontSize:'0.82rem'}}>£{item.monthly}</span></div>))}</div></div>
+<div style={{display:'flex',flexDirection:'column',gap:'0.2rem'}}>{renderItems(nonDiscretionary.items,'var(--coral)','nd')}</div></div>
 
 {discretionary.items.length>0&&(<div><p style={{color:'var(--muted)',fontSize:'0.7rem',marginBottom:'0.5rem',textTransform:'uppercase',letterSpacing:'0.1em'}}>Lifestyle spending</p>
-<div style={{display:'flex',flexDirection:'column',gap:'0.4rem'}}>{discretionary.items.filter(i=>i.monthly>0).map((item,i)=>(<div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><span style={{color:'var(--text2)',fontSize:'0.82rem'}}>{item.category}</span><span className="mono" style={{color:'var(--accent)',fontSize:'0.82rem'}}>£{item.monthly}</span></div>))}</div></div>)}
+<div style={{display:'flex',flexDirection:'column',gap:'0.2rem'}}>{renderItems(discretionary.items,'var(--accent)','disc')}</div></div>)}
+<p style={{color:'var(--muted)',fontSize:'0.6rem',textAlign:'center',marginTop:'0.75rem'}}>Tap a category to view transactions</p>
 </div>)};
 
 // COMPOUND COST COMPONENT
