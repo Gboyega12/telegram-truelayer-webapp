@@ -715,7 +715,7 @@ return{...tx,merchant:lookup.name,category:isLargeCredit?'Income':lookup.categor
 
 detectRecurring(txs){
 const byM={};
-txs.forEach(tx=>{if(!tx.merchant||tx.isIncome||tx.isTransfer||tx.isRefund)return;if(!byM[tx.merchant])byM[tx.merchant]=[];byM[tx.merchant].push(tx)});
+txs.forEach(tx=>{if(!tx.merchant||tx.isIncome||tx.isTransfer||tx.isRefund)return;if(this._isLikelyPersonName(tx.merchant))return;if(!byM[tx.merchant])byM[tx.merchant]=[];byM[tx.merchant].push(tx)});
 const recurring=[];
 for(const[merchant,list]of Object.entries(byM)){
 if(list.length<2)continue;
@@ -760,13 +760,13 @@ const streaming=subs.filter(r=>['Netflix','Spotify','Disney+','Prime Video','App
 
 const categories=Object.entries(byCat).map(([name,data])=>({name,total:mo(data.total),count:data.count})).sort((a,b)=>b.total-a.total);
 const byMerch={};
-spending.forEach(tx=>{if(!tx.merchant)return;if(!byMerch[tx.merchant])byMerch[tx.merchant]={total:0,count:0};byMerch[tx.merchant].total+=Math.abs(tx.amount);byMerch[tx.merchant].count++});
+spending.forEach(tx=>{if(!tx.merchant)return;if(this._isLikelyPersonName(tx.merchant))return;if(!byMerch[tx.merchant])byMerch[tx.merchant]={total:0,count:0};byMerch[tx.merchant].total+=Math.abs(tx.amount);byMerch[tx.merchant].count++});
 const topMerchants=Object.entries(byMerch).map(([merchant,d])=>({merchant,total:Math.round(d.total),count:d.count})).sort((a,b)=>b.total-a.total).slice(0,10);
 
 // Income analysis — find primary income source carefully
 const incomeBySource={};
 const salaryKeywords=['salary','wages','payroll','pay from','monthly pay','net pay','direct deposit'];
-income.forEach(tx=>{const n=tx.descNorm||'';
+income.forEach(tx=>{const n=tx.descNorm||'';if(this._isLikelyPersonName(tx.merchant))return;
 const isSalary=salaryKeywords.some(p=>n.includes(p));
 const key=isSalary?'_salary_':n.split(' ').filter(w=>w.length>2).slice(0,2).join(' ')||'unknown';
 if(!incomeBySource[key])incomeBySource[key]={total:0,count:0,amounts:[],dates:[],merchant:isSalary?'Salary/Wages':(tx.merchant||key),isSalary};
