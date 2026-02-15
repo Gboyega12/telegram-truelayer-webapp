@@ -1,5 +1,6 @@
 {
-  "buildCommand": "cd bocy-app && npm install && npx expo export --platform web",
+  "installCommand": "cd bocy-app && npm install --legacy-peer-deps",
+  "buildCommand": "cd bocy-app && npx expo export --platform web",
   "outputDirectory": "bocy-app/dist",
   "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }]
 }
