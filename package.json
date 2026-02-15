@@ -4,7 +4,7 @@
     "node": ">=18"
   },
   "scripts": {
-    "build": "cd bocy-app && npm install --legacy-peer-deps && npx expo export --platform web"
+    "build": "cd bocy-app && npm install --legacy-peer-deps && npx expo export --platform web && mv dist ../dist"
   },
   "devDependencies": {
     "@babel/core": "^7.29.0",
