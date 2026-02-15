@@ -1,0 +1,17 @@
+{
+  "private": true,
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "cd bocy-app && npm install --legacy-peer-deps && npx expo export --platform web"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.29.0",
+    "@babel/parser": "^7.29.0",
+    "@babel/preset-react": "^7.28.5"
+  },
+  "dependencies": {
+    "@babel/standalone": "^7.29.1"
+  }
+}
