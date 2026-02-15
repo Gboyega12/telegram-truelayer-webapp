@@ -74,6 +74,7 @@ export default function HomeScreen() {
   const disc = latest?.discretionary || { total: 0, items: [] };
   const topMove = latest?.top_move;
   const allMoves: any[] = latest?.all_moves || [];
+  const goalContext = latest?.goal_context;
 
   return (
     <SafeAreaView style={s.container}>
@@ -236,9 +237,23 @@ export default function HomeScreen() {
               <View style={s.moveCard}>
                 <View style={s.moveHeader}>
                   <Text style={s.cardTitle}>Top Recommendation</Text>
+                  {goalContext?.ukpfPriority?.label && (
+                    <View style={s.priorityBadge}>
+                      <Text style={s.priorityBadgeText}>
+                        Priority: {goalContext.ukpfPriority.label}
+                      </Text>
+                    </View>
+                  )}
                 </View>
 
                 <Text style={s.moveAction}>{topMove.action}</Text>
+
+                {/* Goal trajectory insight */}
+                {goalContext?.insight && (
+                  <View style={s.insightBox}>
+                    <Text style={s.insightText}>{goalContext.insight}</Text>
+                  </View>
+                )}
 
                 {/* Impact metrics */}
                 <View style={s.moveMetrics}>
@@ -338,8 +353,10 @@ export default function HomeScreen() {
                     </View>
                     <View style={s.otherMoveInfo}>
                       <Text style={s.otherMoveAction} numberOfLines={2}>{move.action}</Text>
-                      {move.annualImpact > 0 && (
-                        <Text style={s.otherMoveImpact}>{formatCurrency(move.annualImpact)}/yr</Text>
+                      {(move.monthlySaving > 0 || move.annualImpact > 0) && (
+                        <Text style={s.otherMoveImpact}>
+                          {move.monthlySaving > 0 ? `${formatCurrency(move.monthlySaving)}/mo` : `${formatCurrency(move.annualImpact)}/yr`}
+                        </Text>
                       )}
                     </View>
                     {move.effort && (
@@ -420,7 +437,11 @@ const s = StyleSheet.create({
   // Move card
   moveCard: { backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.accent, borderRadius: theme.radius.lg, padding: 20, marginBottom: 16 },
   moveHeader: { marginBottom: 4 },
-  moveAction: { fontSize: 18, fontWeight: '600', color: theme.colors.text, lineHeight: 26, marginBottom: 16 },
+  priorityBadge: { alignSelf: 'flex-start', backgroundColor: 'rgba(232,200,114,0.1)', borderRadius: 4, paddingHorizontal: 8, paddingVertical: 3, marginTop: 8, marginBottom: 4 },
+  priorityBadgeText: { fontSize: 11, fontFamily: 'SpaceMono', color: theme.colors.accent, letterSpacing: 0.5 },
+  moveAction: { fontSize: 18, fontWeight: '600', color: theme.colors.text, lineHeight: 26, marginBottom: 12 },
+  insightBox: { backgroundColor: 'rgba(114,176,232,0.06)', borderRadius: theme.radius.sm, padding: 12, borderLeftWidth: 3, borderLeftColor: theme.colors.sky, marginBottom: 16 },
+  insightText: { fontSize: 13, color: theme.colors.text2, lineHeight: 20 },
   moveMetrics: { flexDirection: 'row', gap: 16, marginBottom: 16 },
   moveMetric: { flex: 1, alignItems: 'center', paddingVertical: 10, backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: theme.radius.sm },
   moveMetricValue: { fontSize: 18, fontWeight: '700', color: theme.colors.accent, fontFamily: 'SpaceMono' },

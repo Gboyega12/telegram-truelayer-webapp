@@ -143,31 +143,6 @@ ${name}`;
       <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
         <Text style={s.pageTitle}>Your Plan</Text>
 
-        {/* Goals summary */}
-        {goals && (
-          <View style={s.card}>
-            <Text style={s.cardTitle}>Your Goals</Text>
-            <View style={s.goalRow}>
-              <Text style={s.goalLabel}>Now</Text>
-              <Text style={s.goalValue}>{getGoalLabel(goals.current_situation)}</Text>
-            </View>
-            <View style={s.goalRow}>
-              <Text style={s.goalLabel}>1 year</Text>
-              <Text style={s.goalValue}>{getGoalLabel(goals.one_year_goal)}</Text>
-            </View>
-            <View style={s.goalRow}>
-              <Text style={s.goalLabel}>2 years</Text>
-              <Text style={s.goalValue}>{getGoalLabel(goals.two_year_goal)}</Text>
-            </View>
-            {goals.target_amount && (
-              <View style={s.goalRow}>
-                <Text style={s.goalLabel}>Target</Text>
-                <Text style={[s.goalValue, { color: theme.colors.accent }]}>{formatCurrency(goals.target_amount)}</Text>
-              </View>
-            )}
-          </View>
-        )}
-
         {/* Action plan for each move */}
         {allMoves.length > 0 ? (
           <View style={s.card}>
@@ -310,11 +285,6 @@ const s = StyleSheet.create({
 
   card: { backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border, borderRadius: theme.radius.lg, padding: 20, marginBottom: 16 },
   cardTitle: { fontFamily: 'SpaceMono', fontSize: 11, color: theme.colors.accent, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 16 },
-
-  // Goals
-  goalRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: theme.colors.border },
-  goalLabel: { width: 60, fontSize: 12, color: theme.colors.dim, fontFamily: 'SpaceMono' },
-  goalValue: { flex: 1, fontSize: 14, color: theme.colors.text2 },
 
   // Plan items
   planItem: { borderBottomWidth: 1, borderBottomColor: theme.colors.border },

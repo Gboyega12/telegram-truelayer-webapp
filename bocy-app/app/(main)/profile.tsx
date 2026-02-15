@@ -52,37 +52,35 @@ export default function ProfileScreen() {
   const handleDeleteAccount = () => {
     Alert.alert(
       'Delete account',
-      'This will permanently delete your account, all your analyses, goals, and personal data. This cannot be undone.\n\nAre you sure?',
+      'This will permanently delete your account, all your analyses, goals, and personal data. This cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Yes, delete my account',
+          text: 'Delete permanently',
           style: 'destructive',
-          onPress: () => {
-            Alert.alert(
-              'Final confirmation',
-              'This action is irreversible. All your data will be permanently removed.',
-              [
-                { text: 'Keep my account', style: 'cancel' },
-                {
-                  text: 'Delete permanently',
-                  style: 'destructive',
-                  onPress: async () => {
-                    try {
-                      const { data: { user } } = await supabase.auth.getUser();
-                      if (user) {
-                        await supabase.from('analyses').delete().eq('user_id', user.id);
-                        await supabase.from('goals').delete().eq('user_id', user.id);
-                      }
-                      await supabase.auth.signOut();
-                      Alert.alert('Account deleted', 'Your account and all data have been removed.');
-                    } catch (err) {
-                      Alert.alert('Something went wrong', 'Please try again or contact support.');
-                    }
-                  },
+          onPress: async () => {
+            try {
+              const { data: { session } } = await supabase.auth.getSession();
+              if (!session?.access_token) {
+                Alert.alert('Error', 'Not authenticated. Please sign in again.');
+                return;
+              }
+              const apiUrl = process.env.EXPO_PUBLIC_API_URL || '';
+              const resp = await fetch(`${apiUrl}/api/delete-account`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${session.access_token}`,
                 },
-              ]
-            );
+              });
+              if (!resp.ok) {
+                const err = await resp.json().catch(() => ({}));
+                throw new Error(err.detail || 'Failed to delete account');
+              }
+              await supabase.auth.signOut();
+            } catch (err: any) {
+              Alert.alert('Something went wrong', err.message || 'Please try again or contact support.');
+            }
           },
         },
       ]
