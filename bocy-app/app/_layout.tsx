@@ -45,7 +45,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
       if (!fullName) {
         router.replace('/(main)/welcome' as any);
       } else {
-        router.replace('/(main)/history' as any);
+        router.replace('/(main)/(tabs)' as any);
       }
     }
   }, [session, loading, segments]);
