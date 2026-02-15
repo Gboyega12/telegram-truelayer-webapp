@@ -6,11 +6,11 @@ import {
   StyleSheet,
   SafeAreaView,
   ScrollView,
-  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { theme } from '../../theme';
 import { supabase } from '../../lib/supabase';
+import { confirm } from '../../lib/confirm';
 
 type MenuItem = {
   label: string;
@@ -38,52 +38,46 @@ export default function ProfileScreen() {
   };
 
   const handleSignOut = () => {
-    Alert.alert('Sign out', 'Are you sure you want to sign out?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Sign out',
-        onPress: async () => {
-          await supabase.auth.signOut();
-        },
+    confirm(
+      'Sign out',
+      'Are you sure you want to sign out?',
+      async () => {
+        await supabase.auth.signOut();
       },
-    ]);
+      'Sign out',
+    );
   };
 
   const handleDeleteAccount = () => {
-    Alert.alert(
+    confirm(
       'Delete account',
       'This will permanently delete your account, all your analyses, goals, and personal data. This cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete permanently',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const { data: { session } } = await supabase.auth.getSession();
-              if (!session?.access_token) {
-                Alert.alert('Error', 'Not authenticated. Please sign in again.');
-                return;
-              }
-              const apiUrl = process.env.EXPO_PUBLIC_API_URL || '';
-              const resp = await fetch(`${apiUrl}/api/delete-account`, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${session.access_token}`,
-                },
-              });
-              if (!resp.ok) {
-                const err = await resp.json().catch(() => ({}));
-                throw new Error(err.detail || 'Failed to delete account');
-              }
-              await supabase.auth.signOut();
-            } catch (err: any) {
-              Alert.alert('Something went wrong', err.message || 'Please try again or contact support.');
-            }
-          },
-        },
-      ]
+      async () => {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (!session?.access_token) {
+            confirm('Error', 'Not authenticated. Please sign in again.', () => {});
+            return;
+          }
+          const apiUrl = process.env.EXPO_PUBLIC_API_URL || '';
+          const resp = await fetch(`${apiUrl}/api/delete-account`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session.access_token}`,
+            },
+          });
+          if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            throw new Error(err.detail || 'Failed to delete account');
+          }
+          await supabase.auth.signOut();
+        } catch (err: any) {
+          confirm('Something went wrong', err.message || 'Please try again or contact support.', () => {});
+        }
+      },
+      'Delete permanently',
+      true,
     );
   };
 
@@ -96,12 +90,12 @@ export default function ProfileScreen() {
     {
       label: 'Report a Bug',
       icon: '\u2691',
-      onPress: () => Alert.alert('Report a Bug', 'Please email us at support@bocy.app with details of the issue.'),
+      onPress: () => confirm('Report a Bug', 'Please email us at support@bocy.app with details of the issue.', () => {}),
     },
     {
       label: 'Notifications',
       icon: '\u266A',
-      onPress: () => Alert.alert('Notifications', 'Notification preferences will be available soon.'),
+      onPress: () => confirm('Notifications', 'Notification preferences will be available soon.', () => {}),
     },
     {
       label: 'Goals',
@@ -111,7 +105,7 @@ export default function ProfileScreen() {
     {
       label: 'Agreements',
       icon: '\u2637',
-      onPress: () => Alert.alert('Agreements', 'Terms of service and privacy policy will be available soon.'),
+      onPress: () => confirm('Agreements', 'Terms of service and privacy policy will be available soon.', () => {}),
     },
     {
       label: 'Security',

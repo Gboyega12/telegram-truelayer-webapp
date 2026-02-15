@@ -5,13 +5,13 @@ import {
   TouchableOpacity,
   StyleSheet,
   SafeAreaView,
-  Alert,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as WebBrowser from 'expo-web-browser';
 import { useRouter } from 'expo-router';
 import { theme } from '../../theme';
 import { getTrueLayerAuthUrl } from '../../lib/truelayer';
+import { confirm } from '../../lib/confirm';
 
 export default function ConnectScreen() {
   const [loading, setLoading] = useState(false);
@@ -36,11 +36,11 @@ export default function ConnectScreen() {
             params: { csvData: decodeURIComponent(csvData), source: 'bank' },
           });
         } else {
-          Alert.alert('Connection issue', 'We couldn\'t retrieve your transaction data. Please try again.');
+          confirm('Connection issue', 'We couldn\'t retrieve your transaction data. Please try again.', () => {});
         }
       }
     } catch (error) {
-      Alert.alert('Something went wrong', 'The bank connection didn\'t go through. Please try again.');
+      confirm('Something went wrong', 'The bank connection didn\'t go through. Please try again.', () => {});
     }
     setLoading(false);
   };
@@ -63,11 +63,11 @@ export default function ConnectScreen() {
             params: { csvData, source: 'csv' },
           });
         } else {
-          Alert.alert('Hmm, that doesn\'t look right', 'The file appears to be empty or isn\'t a valid CSV. Please try another.');
+          confirm('Hmm, that doesn\'t look right', 'The file appears to be empty or isn\'t a valid CSV. Please try another.', () => {});
         }
       }
     } catch (error) {
-      Alert.alert('Something went wrong', 'We couldn\'t read that file. Please make sure it\'s a CSV export from your bank.');
+      confirm('Something went wrong', 'We couldn\'t read that file. Please make sure it\'s a CSV export from your bank.', () => {});
     }
   };
 

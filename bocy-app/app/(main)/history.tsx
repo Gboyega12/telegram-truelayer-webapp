@@ -8,11 +8,11 @@ import {
   ScrollView,
   ActivityIndicator,
   Modal,
-  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { theme } from '../../theme';
 import { supabase } from '../../lib/supabase';
+import { confirm } from '../../lib/confirm';
 
 type Analysis = {
   id: string;
@@ -108,30 +108,29 @@ export default function DashboardScreen() {
 
   const handleDeleteAccount = () => {
     setShowProfile(false);
-    Alert.alert(
+    confirm(
       'Delete account',
       'This will permanently delete your account and all your data. This cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const { data: { user } } = await supabase.auth.getUser();
-              if (user) {
-                // Delete user data first
-                await supabase.from('analyses').delete().eq('user_id', user.id);
-                await supabase.from('goals').delete().eq('user_id', user.id);
-              }
-              await supabase.auth.signOut();
-              Alert.alert('Account deleted', 'Your account and data have been removed.');
-            } catch (err) {
-              Alert.alert('Something went wrong', 'Please try again or contact support.');
-            }
-          },
-        },
-      ]
+      async () => {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.access_token) {
+            const apiUrl = process.env.EXPO_PUBLIC_API_URL || '';
+            await fetch(`${apiUrl}/api/delete-account`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${session.access_token}`,
+              },
+            });
+          }
+          await supabase.auth.signOut();
+        } catch (err) {
+          confirm('Something went wrong', 'Please try again or contact support.', () => {});
+        }
+      },
+      'Delete',
+      true,
     );
   };
 
@@ -289,10 +288,10 @@ export default function DashboardScreen() {
                     <TouchableOpacity
                       style={s.approveBtn}
                       onPress={() =>
-                        Alert.alert(
+                        confirm(
                           'Coming soon',
                           'Soon you\'ll be able to approve recommendations and we\'ll help set up automatic transfers, payment adjustments, and reminders for you.',
-                          [{ text: 'Got it' }]
+                          () => {},
                         )
                       }
                       activeOpacity={0.8}

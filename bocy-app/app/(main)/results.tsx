@@ -7,11 +7,10 @@ import {
   SafeAreaView,
   ScrollView,
   Animated,
-  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { theme } from '../../theme';
-import { findMostMaterialMove } from '../../lib/move-engine';
+import { confirm } from '../../lib/confirm';
 
 export default function ResultsScreen() {
   const router = useRouter();
@@ -22,10 +21,8 @@ export default function ResultsScreen() {
   const result = (globalThis as any).__bocyResult;
   const goals = (globalThis as any).__bocyGoals;
 
-  // Run move engine
-  const moveResult = result
-    ? findMostMaterialMove(result.profile, goals, result.decisionStack)
-    : null;
+  // Use cached move result from processing pipeline (already UKPF-ranked + Claude-refined)
+  const moveResult = (globalThis as any).__bocyMoveResult || null;
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -254,10 +251,10 @@ export default function ResultsScreen() {
                 <TouchableOpacity
                   style={s.approveBtn}
                   onPress={() =>
-                    Alert.alert(
+                    confirm(
                       'Coming soon',
                       'Soon you\'ll be able to approve recommendations and we\'ll help set up automatic transfers, payment adjustments, and reminders for you.',
-                      [{ text: 'Got it' }]
+                      () => {},
                     )
                   }
                   activeOpacity={0.8}
@@ -384,6 +381,13 @@ export default function ResultsScreen() {
 
           {/* Action buttons */}
           <View style={s.bottomActions}>
+            <TouchableOpacity
+              style={s.goHomeBtn}
+              onPress={() => router.replace('/(main)/(tabs)' as any)}
+              activeOpacity={0.8}
+            >
+              <Text style={s.goHomeBtnText}>Go to Home</Text>
+            </TouchableOpacity>
             <TouchableOpacity
               style={s.newAnalysisBtn}
               onPress={() => router.replace('/(main)/connect' as any)}
@@ -922,6 +926,20 @@ const s = StyleSheet.create({
   // Bottom
   bottomActions: {
     marginTop: 8,
+    gap: 12,
+  },
+  goHomeBtn: {
+    backgroundColor: theme.colors.accent,
+    borderRadius: theme.radius.md,
+    padding: 16,
+    alignItems: 'center',
+  },
+  goHomeBtnText: {
+    fontFamily: 'SpaceMono',
+    fontSize: 14,
+    fontWeight: '700',
+    color: theme.colors.bg,
+    letterSpacing: 1,
   },
   newAnalysisBtn: {
     borderWidth: 1,

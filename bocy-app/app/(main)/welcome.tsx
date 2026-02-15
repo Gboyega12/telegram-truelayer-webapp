@@ -9,12 +9,12 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { theme } from '../../theme';
 import { supabase } from '../../lib/supabase';
+import { confirm } from '../../lib/confirm';
 
 const VALUE_POINTS = [
   {
@@ -46,7 +46,7 @@ export default function WelcomeScreen() {
     const trimmedLast = lastName.trim();
 
     if (!trimmedFirst) {
-      Alert.alert('What should we call you?', 'Please enter your first name.');
+      confirm('What should we call you?', 'Please enter your first name.', () => {});
       return;
     }
 
@@ -61,7 +61,7 @@ export default function WelcomeScreen() {
     setSaving(false);
 
     if (error) {
-      Alert.alert('Something went wrong', error.message);
+      confirm('Something went wrong', error.message, () => {});
     } else {
       router.replace('/(main)/connect' as any);
     }

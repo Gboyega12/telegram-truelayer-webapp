@@ -7,11 +7,11 @@ import {
   SafeAreaView,
   ScrollView,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { theme } from '../../../theme';
 import { supabase } from '../../../lib/supabase';
+import { confirm } from '../../../lib/confirm';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -282,10 +282,10 @@ export default function HomeScreen() {
                   <TouchableOpacity
                     style={s.approveBtn}
                     onPress={() =>
-                      Alert.alert(
+                      confirm(
                         'Coming soon',
                         'Soon you\'ll be able to approve recommendations and we\'ll help set up automatic transfers, payment adjustments, and reminders for you.',
-                        [{ text: 'Got it' }]
+                        () => {},
                       )
                     }
                     activeOpacity={0.8}

@@ -7,12 +7,12 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import { theme } from '../../theme';
+import { confirm } from '../../lib/confirm';
 
 export default function SignUp() {
   const [email, setEmail] = useState('');
@@ -24,18 +24,18 @@ export default function SignUp() {
 
   const handleSignUp = async () => {
     if (!email || !password) {
-      Alert.alert('Missing fields', 'Please enter your email and password.');
+      confirm('Missing fields', 'Please enter your email and password.', () => {});
       return;
     }
     if (password.length < 6) {
-      Alert.alert('Weak password', 'Password must be at least 6 characters.');
+      confirm('Weak password', 'Password must be at least 6 characters.', () => {});
       return;
     }
     setLoading(true);
     const { error } = await supabase.auth.signUp({ email, password });
     setLoading(false);
     if (error) {
-      Alert.alert('Sign up failed', error.message);
+      confirm('Sign up failed', error.message, () => {});
     } else {
       setVerificationSent(true);
     }
@@ -49,9 +49,9 @@ export default function SignUp() {
     });
     setResending(false);
     if (error) {
-      Alert.alert('Could not resend', error.message);
+      confirm('Could not resend', error.message, () => {});
     } else {
-      Alert.alert('Email sent', 'We\'ve sent another verification link to your inbox.');
+      confirm('Email sent', 'We\'ve sent another verification link to your inbox.', () => {});
     }
   };
 
