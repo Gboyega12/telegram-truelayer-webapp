@@ -318,7 +318,7 @@ export default function ResultsScreen() {
           )}
 
           {/* Other Moves */}
-          {moveResult?.allScored?.length > 1 && (
+          {moveResult && moveResult.allScored?.length > 1 && (
             <View style={s.card}>
               <Text style={s.cardTitle}>Other Moves</Text>
               {moveResult.allScored.slice(1).map((scored: any, i: number) => (

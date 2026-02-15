@@ -35,13 +35,7 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
-      "expo-document-picker",
-      [
-        "expo-auth-session",
-        {
-          "scheme": "bocyapp"
-        }
-      ]
+      "expo-document-picker"
     ],
     "experiments": {
       "typedRoutes": true

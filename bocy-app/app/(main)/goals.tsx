@@ -141,7 +141,7 @@ export default function GoalsScreen() {
                   <Text style={s.optionDesc}>{opt.desc}</Text>
                 </View>
               </View>
-              {'hasInput' in opt && opt.hasInput && selectedValue === opt.id && (
+              {'hasInput' in opt && (opt as any).hasInput && selectedValue === opt.id && (
                 <TextInput
                   style={s.amountInput}
                   placeholder="e.g. 5000"

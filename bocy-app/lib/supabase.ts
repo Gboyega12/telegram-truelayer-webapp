@@ -6,34 +6,47 @@ const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
 
 // Secure token storage for native, localStorage for web
+const isWeb = Platform.OS === 'web' && typeof localStorage !== 'undefined';
+
 const ExpoSecureStoreAdapter = {
   getItem: (key: string) => {
-    if (Platform.OS === 'web') {
+    if (isWeb) {
       return localStorage.getItem(key);
     }
-    return SecureStore.getItemAsync(key);
+    if (Platform.OS !== 'web') {
+      return SecureStore.getItemAsync(key);
+    }
+    return null;
   },
   setItem: (key: string, value: string) => {
-    if (Platform.OS === 'web') {
+    if (isWeb) {
       localStorage.setItem(key, value);
       return;
     }
-    return SecureStore.setItemAsync(key, value);
+    if (Platform.OS !== 'web') {
+      return SecureStore.setItemAsync(key, value);
+    }
   },
   removeItem: (key: string) => {
-    if (Platform.OS === 'web') {
+    if (isWeb) {
       localStorage.removeItem(key);
       return;
     }
-    return SecureStore.deleteItemAsync(key);
+    if (Platform.OS !== 'web') {
+      return SecureStore.deleteItemAsync(key);
+    }
   },
 };
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    storage: ExpoSecureStoreAdapter as any,
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: false,
+export const supabase = createClient(
+  supabaseUrl || 'https://placeholder.supabase.co',
+  supabaseAnonKey || 'placeholder',
+  {
+    auth: {
+      storage: ExpoSecureStoreAdapter as any,
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: false,
+    },
   },
-});
+);
