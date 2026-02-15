@@ -11,6 +11,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../../../theme';
 import { supabase } from '../../../lib/supabase';
 
@@ -68,7 +69,6 @@ export default function ChatScreen() {
   const getApiUrl = () => {
     const envUrl = process.env.EXPO_PUBLIC_API_URL;
     if (envUrl) return `${envUrl}/api/chat`;
-    // For web, use relative URL; for native, this needs to be configured
     if (Platform.OS === 'web') return '/api/chat';
     return '/api/chat';
   };
@@ -169,7 +169,10 @@ export default function ChatScreen() {
 
           {sending && (
             <View style={[s.messageBubble, s.aiBubble]}>
-              <ActivityIndicator color={theme.colors.accent} size="small" />
+              <View style={s.typingRow}>
+                <ActivityIndicator color={theme.colors.accent} size="small" />
+                <Text style={s.typingText}>BOCY is thinking...</Text>
+              </View>
             </View>
           )}
         </ScrollView>
@@ -193,7 +196,7 @@ export default function ChatScreen() {
             disabled={!input.trim() || sending}
             activeOpacity={0.7}
           >
-            <Text style={s.sendBtnText}>{'\u2191'}</Text>
+            <Ionicons name="arrow-up" size={20} color={theme.colors.bg} />
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -225,11 +228,12 @@ const s = StyleSheet.create({
   messageText: { fontSize: 14, lineHeight: 21 },
   userText: { color: theme.colors.text },
   aiText: { color: theme.colors.text2 },
+  typingRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  typingText: { fontSize: 12, color: theme.colors.dim, fontFamily: 'SpaceMono', letterSpacing: 0.5 },
 
   // Input
   inputWrap: { flexDirection: 'row', alignItems: 'flex-end', paddingHorizontal: 16, paddingVertical: 12, borderTopWidth: 1, borderTopColor: theme.colors.border, gap: 10 },
   input: { flex: 1, backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: theme.colors.border, borderRadius: theme.radius.md, paddingHorizontal: 16, paddingVertical: 12, color: theme.colors.text, fontSize: 15, maxHeight: 100 },
   sendBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: theme.colors.accent, justifyContent: 'center', alignItems: 'center' },
   sendBtnDisabled: { opacity: 0.4 },
-  sendBtnText: { fontSize: 18, fontWeight: '700', color: theme.colors.bg },
 });

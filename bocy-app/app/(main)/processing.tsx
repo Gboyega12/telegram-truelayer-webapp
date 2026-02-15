@@ -7,6 +7,7 @@ import {
   Animated,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../../theme';
 import { supabase } from '../../lib/supabase';
 
@@ -225,7 +226,7 @@ ${movesToRefine.map((m: any, idx: number) => `${idx + 1}. "${m.action}" (saves Â
                 i < currentStep && s.stepDotDone,
                 i === currentStep && s.stepDotActive,
               ]}>
-                {i < currentStep && <Text style={s.checkmark}>&#10003;</Text>}
+                {i < currentStep && <Ionicons name="checkmark" size={14} color={theme.colors.mint} />}
                 {i === currentStep && <View style={s.pulse} />}
               </View>
               <Text style={[

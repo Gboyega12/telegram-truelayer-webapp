@@ -12,23 +12,24 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../../theme';
 import { supabase } from '../../lib/supabase';
 import { confirm } from '../../lib/confirm';
 
 const VALUE_POINTS = [
   {
-    icon: '1',
+    icon: 'lock-closed-outline' as const,
     title: 'Connect your bank',
     desc: 'Securely link your account or upload a statement. Your data stays private.',
   },
   {
-    icon: '2',
+    icon: 'analytics-outline' as const,
     title: 'We analyse your spending',
     desc: 'Our engine reviews your transactions, spots patterns, and understands your habits.',
   },
   {
-    icon: '3',
+    icon: 'flash-outline' as const,
     title: 'Get personalised recommendations',
     desc: 'Receive clear, actionable steps tailored to your goals — not generic advice.',
   },
@@ -83,7 +84,7 @@ export default function WelcomeScreen() {
             {VALUE_POINTS.map((point, i) => (
               <View key={i} style={s.valuePoint}>
                 <View style={s.valueIconWrap}>
-                  <Text style={s.valueIcon}>{point.icon}</Text>
+                  <Ionicons name={point.icon} size={18} color={theme.colors.accent} />
                 </View>
                 <View style={s.valueContent}>
                   <Text style={s.valueTitle}>{point.title}</Text>

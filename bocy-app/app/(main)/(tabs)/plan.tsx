@@ -6,12 +6,13 @@ import {
   StyleSheet,
   SafeAreaView,
   ScrollView,
-  ActivityIndicator,
   Linking,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../../../theme';
 import { supabase } from '../../../lib/supabase';
+import { confirm } from '../../../lib/confirm';
 
 const GOAL_LABELS: Record<string, string> = {
   in_debt: 'In debt',
@@ -33,6 +34,43 @@ const getGoalLabel = (id: string) => {
   return GOAL_LABELS[id] || id;
 };
 
+/* ── skeleton placeholder ── */
+function Skeleton({ width, height, style }: { width: number | string; height: number; style?: any }) {
+  return (
+    <View
+      style={[
+        {
+          width: width as any,
+          height,
+          backgroundColor: 'rgba(255,255,255,0.06)',
+          borderRadius: 8,
+        },
+        style,
+      ]}
+    />
+  );
+}
+
+function PlanSkeleton() {
+  return (
+    <View style={{ gap: 16, paddingTop: 8 }}>
+      <Skeleton width="40%" height={26} />
+      <View style={[s.card, { gap: 14 }]}>
+        <Skeleton width="35%" height={12} />
+        {[1, 2, 3].map(i => (
+          <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <Skeleton width={28} height={28} style={{ borderRadius: 14 }} />
+            <View style={{ flex: 1, gap: 6 }}>
+              <Skeleton width="80%" height={16} />
+              <Skeleton width="40%" height={12} />
+            </View>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
 export default function PlanScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -40,6 +78,7 @@ export default function PlanScreen() {
   const [analysis, setAnalysis] = useState<any>(null);
   const [expandedMove, setExpandedMove] = useState<number | null>(null);
   const [userName, setUserName] = useState('');
+  const [committed, setCommitted] = useState<Record<number, boolean>>({});
 
   useEffect(() => {
     loadPlan();
@@ -71,6 +110,15 @@ export default function PlanScreen() {
     return `\u00A3${Math.round(Math.abs(n))}`;
   };
 
+  const handleCommitMove = (index: number) => {
+    setCommitted(prev => ({ ...prev, [index]: true }));
+    confirm(
+      "You're on it!",
+      "We've noted this action. We'll check your progress in your next analysis.",
+      () => {},
+    );
+  };
+
   const isInDebt = goals?.current_situation === 'in_debt' || goals?.one_year_goal === 'clear_debt';
   const surplus = analysis?.surplus || 0;
   const allMoves: any[] = analysis?.all_moves || [];
@@ -100,40 +148,29 @@ Kind regards,
 ${name}`;
   };
 
-  const handleEmailHelp = (type: 'stepchange' | 'citizens_advice' | 'credit_card') => {
-    let email = '';
-    let subject = '';
-    let recipient = '';
-
+  const handleDebtHelp = (type: 'stepchange' | 'citizens_advice' | 'credit_card') => {
     switch (type) {
       case 'stepchange':
-        email = '';
-        subject = 'Request for Debt Advice';
-        recipient = 'StepChange';
+        Linking.openURL('https://www.stepchange.org/start.aspx');
         break;
       case 'citizens_advice':
-        email = '';
-        subject = 'Request for Financial Guidance';
-        recipient = 'Citizens Advice';
+        Linking.openURL('https://www.citizensadvice.org.uk/debt-and-money/');
         break;
-      case 'credit_card':
-        email = '';
-        subject = 'Hardship Period Application';
-        recipient = 'the team';
+      case 'credit_card': {
+        const body = encodeURIComponent(buildDebtEmailBody('the team'));
+        const subject = encodeURIComponent('Hardship Period Application');
+        Linking.openURL(`mailto:?subject=${subject}&body=${body}`);
         break;
+      }
     }
-
-    const body = encodeURIComponent(buildDebtEmailBody(recipient));
-    const url = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${body}`;
-    Linking.openURL(url);
   };
 
   if (loading) {
     return (
       <SafeAreaView style={s.container}>
-        <View style={s.loadingWrap}>
-          <ActivityIndicator color={theme.colors.accent} />
-        </View>
+        <ScrollView contentContainerStyle={s.scroll}>
+          <PlanSkeleton />
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -166,7 +203,11 @@ ${name}`;
                         <Text style={s.planItemImpact}>{formatCurrency(move.annualImpact)}/yr impact</Text>
                       )}
                     </View>
-                    <Text style={s.expandArrow}>{isExpanded ? '\u25BE' : '\u25B8'}</Text>
+                    <Ionicons
+                      name={isExpanded ? 'chevron-down' : 'chevron-forward'}
+                      size={16}
+                      color={theme.colors.muted}
+                    />
                   </TouchableOpacity>
 
                   {isExpanded && (
@@ -196,17 +237,30 @@ ${name}`;
                         </View>
                       )}
 
-                      {/* Automate / Cancel */}
+                      {/* Commit / Close */}
                       <View style={s.planActions}>
-                        <TouchableOpacity style={s.automateBtn} activeOpacity={0.8}>
-                          <Text style={s.automateBtnText}>Automate</Text>
+                        <TouchableOpacity
+                          style={[s.commitBtn, committed[i] && s.committedBtn]}
+                          onPress={() => handleCommitMove(i)}
+                          activeOpacity={0.8}
+                          disabled={!!committed[i]}
+                        >
+                          <Ionicons
+                            name={committed[i] ? 'checkmark-circle' : 'flash'}
+                            size={15}
+                            color={committed[i] ? theme.colors.mint : theme.colors.bg}
+                            style={{ marginRight: 4 }}
+                          />
+                          <Text style={[s.commitBtnText, committed[i] && s.committedBtnText]}>
+                            {committed[i] ? 'Committed' : "I'll do this"}
+                          </Text>
                         </TouchableOpacity>
                         <TouchableOpacity
                           style={s.cancelBtn}
                           onPress={() => setExpandedMove(null)}
                           activeOpacity={0.8}
                         >
-                          <Text style={s.cancelBtnText}>Cancel</Text>
+                          <Text style={s.cancelBtnText}>Close</Text>
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -243,29 +297,41 @@ ${name}`;
               <>
                 <TouchableOpacity
                   style={s.debtHelpBtn}
-                  onPress={() => handleEmailHelp('stepchange')}
+                  onPress={() => handleDebtHelp('stepchange')}
                   activeOpacity={0.8}
                 >
-                  <Text style={s.debtHelpBtnText}>Contact StepChange</Text>
-                  <Text style={s.debtHelpBtnSub}>Free debt advice charity</Text>
+                  <Ionicons name="heart-circle-outline" size={20} color={theme.colors.text} style={{ marginRight: 10 }} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.debtHelpBtnText}>StepChange</Text>
+                    <Text style={s.debtHelpBtnSub}>Free debt advice charity — stepchange.org</Text>
+                  </View>
+                  <Ionicons name="open-outline" size={16} color={theme.colors.muted} />
                 </TouchableOpacity>
 
                 <TouchableOpacity
                   style={s.debtHelpBtn}
-                  onPress={() => handleEmailHelp('citizens_advice')}
+                  onPress={() => handleDebtHelp('citizens_advice')}
                   activeOpacity={0.8}
                 >
-                  <Text style={s.debtHelpBtnText}>Contact Citizens Advice</Text>
-                  <Text style={s.debtHelpBtnSub}>Free, independent guidance</Text>
+                  <Ionicons name="people-circle-outline" size={20} color={theme.colors.text} style={{ marginRight: 10 }} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.debtHelpBtnText}>Citizens Advice</Text>
+                    <Text style={s.debtHelpBtnSub}>Free, independent guidance — citizensadvice.org.uk</Text>
+                  </View>
+                  <Ionicons name="open-outline" size={16} color={theme.colors.muted} />
                 </TouchableOpacity>
 
                 <TouchableOpacity
                   style={s.debtHelpBtn}
-                  onPress={() => handleEmailHelp('credit_card')}
+                  onPress={() => handleDebtHelp('credit_card')}
                   activeOpacity={0.8}
                 >
-                  <Text style={s.debtHelpBtnText}>Apply for hardship period</Text>
-                  <Text style={s.debtHelpBtnSub}>Request breathing space from your lender</Text>
+                  <Ionicons name="mail-outline" size={20} color={theme.colors.text} style={{ marginRight: 10 }} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.debtHelpBtnText}>Apply for hardship period</Text>
+                    <Text style={s.debtHelpBtnSub}>Draft an email to your lender</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color={theme.colors.muted} />
                 </TouchableOpacity>
               </>
             )}
@@ -279,7 +345,6 @@ ${name}`;
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.bg },
   scroll: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 80 },
-  loadingWrap: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
   pageTitle: { fontSize: 26, fontWeight: '700', color: theme.colors.text, marginBottom: 24 },
 
@@ -294,7 +359,6 @@ const s = StyleSheet.create({
   planItemInfo: { flex: 1 },
   planItemAction: { fontSize: 15, color: theme.colors.text, fontWeight: '500', lineHeight: 22 },
   planItemImpact: { fontSize: 12, color: theme.colors.mint, fontFamily: 'SpaceMono', marginTop: 2 },
-  expandArrow: { fontSize: 14, color: theme.colors.muted },
 
   // Plan detail
   planDetail: { paddingLeft: 40, paddingBottom: 16 },
@@ -309,8 +373,10 @@ const s = StyleSheet.create({
   planEffectText: { fontSize: 14, color: theme.colors.text2, lineHeight: 20 },
 
   planActions: { flexDirection: 'row', gap: 12 },
-  automateBtn: { flex: 1, backgroundColor: theme.colors.accent, borderRadius: theme.radius.md, padding: 12, alignItems: 'center' },
-  automateBtnText: { fontFamily: 'SpaceMono', fontSize: 12, fontWeight: '700', color: theme.colors.bg, letterSpacing: 1 },
+  commitBtn: { flex: 1, backgroundColor: theme.colors.accent, borderRadius: theme.radius.md, padding: 12, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' },
+  commitBtnText: { fontFamily: 'SpaceMono', fontSize: 12, fontWeight: '700', color: theme.colors.bg, letterSpacing: 1 },
+  committedBtn: { backgroundColor: theme.colors.mintDim, borderWidth: 1, borderColor: theme.colors.mint },
+  committedBtnText: { color: theme.colors.mint },
   cancelBtn: { flex: 1, borderWidth: 1, borderColor: theme.colors.border, borderRadius: theme.radius.md, padding: 12, alignItems: 'center' },
   cancelBtnText: { fontFamily: 'SpaceMono', fontSize: 12, fontWeight: '600', color: theme.colors.dim, letterSpacing: 1 },
 
@@ -324,7 +390,7 @@ const s = StyleSheet.create({
   debtCard: { backgroundColor: 'rgba(232,114,114,0.06)', borderWidth: 1, borderColor: theme.colors.coralDim, borderRadius: theme.radius.lg, padding: 20, marginBottom: 16 },
   debtTitle: { fontSize: 18, fontWeight: '700', color: theme.colors.text, marginBottom: 8 },
   debtSubtext: { fontSize: 14, color: theme.colors.text2, lineHeight: 21, marginBottom: 16 },
-  debtHelpBtn: { backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border, borderRadius: theme.radius.md, padding: 16, marginBottom: 10 },
+  debtHelpBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border, borderRadius: theme.radius.md, padding: 16, marginBottom: 10 },
   debtHelpBtnText: { fontSize: 15, fontWeight: '600', color: theme.colors.text },
   debtHelpBtnSub: { fontSize: 12, color: theme.colors.dim, marginTop: 2 },
 });

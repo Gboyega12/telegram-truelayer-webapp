@@ -1,11 +1,14 @@
 import { Tabs } from 'expo-router';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../../../theme';
 
-function TabIcon({ label, focused }: { label: string; focused: boolean }) {
+type IoniconsName = React.ComponentProps<typeof Ionicons>['name'];
+
+function TabIcon({ name, focused }: { name: IoniconsName; focused: boolean }) {
   return (
     <View style={s.iconWrap}>
-      <Text style={[s.iconText, focused && s.iconTextActive]}>{label}</Text>
+      <Ionicons name={name} size={22} color={focused ? theme.colors.accent : theme.colors.muted} />
     </View>
   );
 }
@@ -36,21 +39,21 @@ export default function TabLayout() {
         name="index"
         options={{
           title: 'Home',
-          tabBarIcon: ({ focused }) => <TabIcon label={focused ? '\u2302' : '\u2302'} focused={focused} />,
+          tabBarIcon: ({ focused }) => <TabIcon name={focused ? 'home' : 'home-outline'} focused={focused} />,
         }}
       />
       <Tabs.Screen
         name="plan"
         options={{
           title: 'Plan',
-          tabBarIcon: ({ focused }) => <TabIcon label={focused ? '\u2611' : '\u2610'} focused={focused} />,
+          tabBarIcon: ({ focused }) => <TabIcon name={focused ? 'checkmark-circle' : 'checkmark-circle-outline'} focused={focused} />,
         }}
       />
       <Tabs.Screen
         name="chat"
         options={{
           title: 'Chat',
-          tabBarIcon: ({ focused }) => <TabIcon label={focused ? '\u2726' : '\u2727'} focused={focused} />,
+          tabBarIcon: ({ focused }) => <TabIcon name={focused ? 'chatbubble-ellipses' : 'chatbubble-ellipses-outline'} focused={focused} />,
         }}
       />
     </Tabs>
@@ -61,12 +64,5 @@ const s = StyleSheet.create({
   iconWrap: {
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  iconText: {
-    fontSize: 20,
-    color: theme.colors.muted,
-  },
-  iconTextActive: {
-    color: theme.colors.accent,
   },
 });

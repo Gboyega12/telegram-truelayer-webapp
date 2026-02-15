@@ -9,6 +9,7 @@ import {
 import * as DocumentPicker from 'expo-document-picker';
 import * as WebBrowser from 'expo-web-browser';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../../theme';
 import { getTrueLayerAuthUrl } from '../../lib/truelayer';
 import { confirm } from '../../lib/confirm';
@@ -91,7 +92,7 @@ export default function ConnectScreen() {
             activeOpacity={0.8}
           >
             <View style={s.btnIcon}>
-              <Text style={s.btnIconText}>&#9741;</Text>
+              <Ionicons name="lock-closed" size={20} color={theme.colors.accent} />
             </View>
             <View style={s.btnContent}>
               <Text style={s.primaryBtnTitle}>Connect via Open Banking</Text>
@@ -118,15 +119,15 @@ export default function ConnectScreen() {
         {/* Trust indicators */}
         <View style={s.trust}>
           <View style={s.trustItem}>
-            <Text style={s.trustIcon}>&#9399;</Text>
+            <Ionicons name="shield-checkmark" size={14} color={theme.colors.mint} />
             <Text style={s.trustText}>FCA regulated</Text>
           </View>
           <View style={s.trustItem}>
-            <Text style={s.trustIcon}>&#9399;</Text>
+            <Ionicons name="eye-outline" size={14} color={theme.colors.mint} />
             <Text style={s.trustText}>Read-only access</Text>
           </View>
           <View style={s.trustItem}>
-            <Text style={s.trustIcon}>&#9399;</Text>
+            <Ionicons name="phone-portrait-outline" size={14} color={theme.colors.mint} />
             <Text style={s.trustText}>Data stays on device</Text>
           </View>
         </View>

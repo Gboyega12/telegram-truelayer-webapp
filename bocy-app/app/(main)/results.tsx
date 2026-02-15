@@ -9,6 +9,7 @@ import {
   Animated,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../../theme';
 import { confirm } from '../../lib/confirm';
 
@@ -17,6 +18,7 @@ export default function ResultsScreen() {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const [expandedCat, setExpandedCat] = useState<string | null>(null);
   const [showModify, setShowModify] = useState(false);
+  const [committed, setCommitted] = useState(false);
 
   const result = (globalThis as any).__bocyResult;
   const goals = (globalThis as any).__bocyGoals;
@@ -129,7 +131,7 @@ export default function ResultsScreen() {
                     <Text style={[s.catAmount, { color: theme.colors.coral }]}>
                       {formatCurrency(item.monthly)}/mo
                     </Text>
-                    <Text style={s.expandArrow}>{isExpanded ? 'v' : '>'}</Text>
+                    <Ionicons name={isExpanded ? 'chevron-down' : 'chevron-forward'} size={14} color={theme.colors.muted} />
                   </TouchableOpacity>
                   {isExpanded && item.txs?.length > 0 && (
                     <View style={s.txList}>
@@ -163,7 +165,7 @@ export default function ResultsScreen() {
                     <Text style={[s.catAmount, { color: theme.colors.sky }]}>
                       {formatCurrency(item.monthly)}/mo
                     </Text>
-                    <Text style={s.expandArrow}>{isExpanded ? 'v' : '>'}</Text>
+                    <Ionicons name={isExpanded ? 'chevron-down' : 'chevron-forward'} size={14} color={theme.colors.muted} />
                   </TouchableOpacity>
                   {isExpanded && item.txs?.length > 0 && (
                     <View style={s.txList}>
@@ -230,14 +232,14 @@ export default function ResultsScreen() {
               {moveResult.currentTrajectory && moveResult.newTrajectory && (
                 <View style={s.timelineBox}>
                   <View style={s.timelineRow}>
-                    <Text style={s.timelineDot}>o</Text>
+                    <Ionicons name="ellipse-outline" size={14} color={theme.colors.dim} style={{ width: 20, textAlign: 'center' }} />
                     <Text style={s.timelineLabel}>Without changes</Text>
                     <Text style={[s.timelineVal, { color: theme.colors.dim }]}>
                       {moveResult.currentTrajectory} months
                     </Text>
                   </View>
                   <View style={s.timelineRow}>
-                    <Text style={[s.timelineDot, { color: theme.colors.mint }]}>*</Text>
+                    <Ionicons name="checkmark-circle" size={14} color={theme.colors.mint} style={{ width: 20, textAlign: 'center' }} />
                     <Text style={s.timelineLabel}>With this move</Text>
                     <Text style={[s.timelineVal, { color: theme.colors.mint }]}>
                       {moveResult.newTrajectory} months
@@ -246,20 +248,19 @@ export default function ResultsScreen() {
                 </View>
               )}
 
-              {/* Approve / Modify buttons */}
+              {/* Commit / Modify buttons */}
               <View style={s.moveActions}>
                 <TouchableOpacity
-                  style={s.approveBtn}
-                  onPress={() =>
-                    confirm(
-                      'Coming soon',
-                      'Soon you\'ll be able to approve recommendations and we\'ll help set up automatic transfers, payment adjustments, and reminders for you.',
-                      () => {},
-                    )
-                  }
+                  style={[s.approveBtn, committed && { backgroundColor: 'rgba(114,232,176,0.15)', borderWidth: 1, borderColor: theme.colors.mint }]}
+                  onPress={() => {
+                    setCommitted(true);
+                    confirm("You're on it!", "We've noted this as a committed action. We'll track your progress in future analyses.", () => {});
+                  }}
                   activeOpacity={0.8}
+                  disabled={committed}
                 >
-                  <Text style={s.approveBtnText}>Approve</Text>
+                  <Ionicons name={committed ? 'checkmark-circle' : 'flash'} size={16} color={committed ? theme.colors.mint : theme.colors.bg} style={{ marginRight: 6 }} />
+                  <Text style={[s.approveBtnText, committed && { color: theme.colors.mint }]}>{committed ? 'Committed' : "I'll do this"}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={s.modifyBtn}
@@ -680,6 +681,8 @@ const s = StyleSheet.create({
     borderRadius: theme.radius.md,
     padding: 14,
     alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
   },
   approveBtnText: {
     fontFamily: 'SpaceMono',

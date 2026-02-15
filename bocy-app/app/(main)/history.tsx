@@ -10,6 +10,7 @@ import {
   Modal,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../../theme';
 import { supabase } from '../../lib/supabase';
 import { confirm } from '../../lib/confirm';
@@ -28,32 +29,32 @@ type Analysis = {
   all_moves: any[];
 };
 
-// Category icons for spending breakdown
+// Category icons for spending breakdown (Ionicons names)
 const CATEGORY_ICONS: Record<string, string> = {
-  'rent': '\u2302',
-  'housing': '\u2302',
-  'mortgage': '\u2302',
-  'food': '\u2615',
-  'groceries': '\u2615',
-  'supermarket': '\u2615',
-  'bills': '\u26A1',
-  'utilities': '\u26A1',
-  'energy': '\u26A1',
-  'transport': '\u2708',
-  'transportation': '\u2708',
-  'travel': '\u2708',
-  'shopping': '\u2605',
-  'retail': '\u2605',
-  'clothing': '\u2605',
-  'subscriptions': '\u221E',
-  'subscription': '\u221E',
-  'entertainment': '\u266A',
-  'dining': '\u2615',
-  'restaurants': '\u2615',
-  'insurance': '\u2606',
-  'health': '\u2606',
-  'fitness': '\u2606',
-  'default': '\u25CF',
+  'rent': 'home-outline',
+  'housing': 'home-outline',
+  'mortgage': 'home-outline',
+  'food': 'cafe-outline',
+  'groceries': 'cart-outline',
+  'supermarket': 'cart-outline',
+  'bills': 'flash-outline',
+  'utilities': 'flash-outline',
+  'energy': 'flash-outline',
+  'transport': 'car-outline',
+  'transportation': 'car-outline',
+  'travel': 'airplane-outline',
+  'shopping': 'bag-outline',
+  'retail': 'bag-outline',
+  'clothing': 'shirt-outline',
+  'subscriptions': 'infinite-outline',
+  'subscription': 'infinite-outline',
+  'entertainment': 'musical-notes-outline',
+  'dining': 'restaurant-outline',
+  'restaurants': 'restaurant-outline',
+  'insurance': 'shield-outline',
+  'health': 'fitness-outline',
+  'fitness': 'fitness-outline',
+  'default': 'ellipse',
 };
 
 const getCategoryIcon = (category: string): string => {
@@ -71,6 +72,7 @@ export default function DashboardScreen() {
   const [loading, setLoading] = useState(true);
   const [showProfile, setShowProfile] = useState(false);
   const [showModify, setShowModify] = useState(false);
+  const [committedMoves, setCommittedMoves] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     loadDashboard();
@@ -283,20 +285,19 @@ export default function DashboardScreen() {
                     </View>
                   )}
 
-                  {/* Approve / Modify buttons */}
+                  {/* Commit / Modify buttons */}
                   <View style={s.moveActions}>
                     <TouchableOpacity
-                      style={s.approveBtn}
-                      onPress={() =>
-                        confirm(
-                          'Coming soon',
-                          'Soon you\'ll be able to approve recommendations and we\'ll help set up automatic transfers, payment adjustments, and reminders for you.',
-                          () => {},
-                        )
-                      }
+                      style={[s.approveBtn, committedMoves['top'] && { backgroundColor: 'rgba(114,232,176,0.15)', borderWidth: 1, borderColor: theme.colors.mint }]}
+                      onPress={() => {
+                        setCommittedMoves(prev => ({ ...prev, ['top']: true }));
+                        confirm("You're on it!", "We've noted this as a committed action. We'll track your progress in future analyses.", () => {});
+                      }}
                       activeOpacity={0.8}
+                      disabled={!!committedMoves['top']}
                     >
-                      <Text style={s.approveBtnText}>Approve</Text>
+                      <Ionicons name={committedMoves['top'] ? 'checkmark-circle' : 'flash'} size={16} color={committedMoves['top'] ? theme.colors.mint : theme.colors.bg} style={{ marginRight: 6 }} />
+                      <Text style={[s.approveBtnText, committedMoves['top'] && { color: theme.colors.mint }]}>{committedMoves['top'] ? 'Committed' : "I'll do this"}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={s.modifyBtn}
@@ -370,7 +371,7 @@ export default function DashboardScreen() {
                       return (
                         <View key={i} style={s.categoryRow}>
                           <View style={s.categoryIconWrap}>
-                            <Text style={s.categoryIcon}>{getCategoryIcon(item.category)}</Text>
+                            <Ionicons name={getCategoryIcon(item.category) as any} size={16} color={theme.colors.coral} />
                           </View>
                           <View style={s.categoryInfo}>
                             <View style={s.categoryNameRow}>
@@ -401,7 +402,7 @@ export default function DashboardScreen() {
                       return (
                         <View key={i} style={s.categoryRow}>
                           <View style={[s.categoryIconWrap, { backgroundColor: theme.colors.skyDim }]}>
-                            <Text style={[s.categoryIcon, { color: theme.colors.sky }]}>{getCategoryIcon(item.category)}</Text>
+                            <Ionicons name={getCategoryIcon(item.category) as any} size={16} color={theme.colors.sky} />
                           </View>
                           <View style={s.categoryInfo}>
                             <View style={s.categoryNameRow}>
@@ -686,6 +687,8 @@ const s = StyleSheet.create({
     borderRadius: theme.radius.md,
     padding: 14,
     alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
   },
   approveBtnText: {
     fontFamily: 'SpaceMono',

@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
 import { theme } from '../../theme';
 import { confirm } from '../../lib/confirm';
@@ -60,7 +61,7 @@ export default function SignUp() {
       <View style={s.container}>
         <View style={s.inner}>
           <View style={s.verifyIconWrap}>
-            <Text style={s.verifyIcon}>&#9993;</Text>
+            <Ionicons name="mail-outline" size={32} color={theme.colors.accent} />
           </View>
 
           <Text style={s.verifyTitle}>Check your inbox</Text>

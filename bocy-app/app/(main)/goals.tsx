@@ -9,17 +9,18 @@ import {
   TextInput,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../../theme';
 import { supabase } from '../../lib/supabase';
 
 type GoalStep = 'current' | 'oneYear' | 'twoYear';
 
 const CURRENT_OPTIONS = [
-  { id: 'in_debt', label: 'I\'m in debt', desc: 'Paying off loans, credit cards, or buy-now-pay-later', icon: '!' },
-  { id: 'breaking_even', label: 'Breaking even', desc: 'My income covers expenses, but there\'s not much left', icon: '~' },
-  { id: 'saving_slowly', label: 'Saving, but slowly', desc: 'I have some surplus each month and want to do more', icon: '+' },
-  { id: 'saving_well', label: 'Saving comfortably', desc: 'Consistent savings — looking to optimise further', icon: '*' },
-  { id: 'other', label: 'Something else', desc: 'Describe your situation in your own words', icon: '..', hasInput: true },
+  { id: 'in_debt', label: 'I\'m in debt', desc: 'Paying off loans, credit cards, or buy-now-pay-later', icon: 'alert-circle-outline' },
+  { id: 'breaking_even', label: 'Breaking even', desc: 'My income covers expenses, but there\'s not much left', icon: 'swap-horizontal-outline' },
+  { id: 'saving_slowly', label: 'Saving, but slowly', desc: 'I have some surplus each month and want to do more', icon: 'trending-up-outline' },
+  { id: 'saving_well', label: 'Saving comfortably', desc: 'Consistent savings — looking to optimise further', icon: 'checkmark-circle-outline' },
+  { id: 'other', label: 'Something else', desc: 'Describe your situation in your own words', icon: 'create-outline', hasInput: true },
 ];
 
 const ONE_YEAR_OPTIONS = [
@@ -152,9 +153,11 @@ export default function GoalsScreen() {
               <View style={s.optionHeader}>
                 {'icon' in opt && (
                   <View style={[s.optionIcon, selectedValue === opt.id && s.optionIconSelected]}>
-                    <Text style={[s.optionIconText, selectedValue === opt.id && s.optionIconTextSelected]}>
-                      {(opt as any).icon}
-                    </Text>
+                    <Ionicons
+                      name={(opt as any).icon}
+                      size={18}
+                      color={selectedValue === opt.id ? theme.colors.accent : theme.colors.muted}
+                    />
                   </View>
                 )}
                 <View style={s.optionText}>

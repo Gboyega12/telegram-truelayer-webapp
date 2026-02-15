@@ -6,12 +6,68 @@ import {
   StyleSheet,
   SafeAreaView,
   ScrollView,
-  ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../../../theme';
 import { supabase } from '../../../lib/supabase';
 import { confirm } from '../../../lib/confirm';
+
+/* ── skeleton placeholder ── */
+function Skeleton({ width, height, style }: { width: number | string; height: number; style?: any }) {
+  return (
+    <View
+      style={[
+        {
+          width: width as any,
+          height,
+          backgroundColor: 'rgba(255,255,255,0.06)',
+          borderRadius: 8,
+        },
+        style,
+      ]}
+    />
+  );
+}
+
+function HomeSkeleton() {
+  return (
+    <View style={{ gap: 16, paddingTop: 8 }}>
+      {/* Hero card skeleton */}
+      <View style={[s.moveCard, { borderColor: theme.colors.border }]}>
+        <Skeleton width="50%" height={12} />
+        <Skeleton width="90%" height={20} style={{ marginTop: 16 }} />
+        <Skeleton width="70%" height={16} style={{ marginTop: 8 }} />
+        <View style={{ flexDirection: 'row', gap: 12, marginTop: 20 }}>
+          <Skeleton width="33%" height={50} />
+          <Skeleton width="33%" height={50} />
+          <Skeleton width="33%" height={50} />
+        </View>
+        <Skeleton width="100%" height={8} style={{ marginTop: 16, borderRadius: 4 }} />
+        <View style={{ flexDirection: 'row', gap: 12, marginTop: 16 }}>
+          <Skeleton width="48%" height={44} />
+          <Skeleton width="48%" height={44} />
+        </View>
+      </View>
+      {/* Income card skeleton */}
+      <View style={s.card}>
+        <Skeleton width="40%" height={12} />
+        <Skeleton width="50%" height={36} style={{ marginTop: 12 }} />
+        <Skeleton width="100%" height={14} style={{ marginTop: 16 }} />
+        <Skeleton width="80%" height={14} style={{ marginTop: 8 }} />
+      </View>
+      {/* Budget card skeleton */}
+      <View style={s.card}>
+        <Skeleton width="50%" height={12} />
+        <View style={{ flexDirection: 'row', gap: 12, marginTop: 16 }}>
+          <Skeleton width="30%" height={40} />
+          <Skeleton width="30%" height={40} />
+          <Skeleton width="30%" height={40} />
+        </View>
+      </View>
+    </View>
+  );
+}
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -20,6 +76,7 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(true);
   const [expandedCat, setExpandedCat] = useState<string | null>(null);
   const [showModify, setShowModify] = useState(false);
+  const [committed, setCommitted] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     loadDashboard();
@@ -54,17 +111,16 @@ export default function HomeScreen() {
     return `\u00A3${Math.round(Math.abs(n))}`;
   };
 
-  const firstName = userName.split(' ')[0] || 'there';
-
-  if (loading) {
-    return (
-      <SafeAreaView style={s.container}>
-        <View style={s.loadingWrap}>
-          <ActivityIndicator color={theme.colors.accent} />
-        </View>
-      </SafeAreaView>
+  const handleCommit = (id: string) => {
+    setCommitted(prev => ({ ...prev, [id]: true }));
+    confirm(
+      "You're on it!",
+      "We've noted this as a committed action. We'll track your progress in future analyses.",
+      () => {},
     );
-  }
+  };
+
+  const firstName = userName.split(' ')[0] || 'there';
 
   const income = latest?.monthly_income || 0;
   const spending = latest?.monthly_spending || 0;
@@ -91,7 +147,7 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
 
-        {!latest ? (
+        {!latest && !loading ? (
           <View style={s.emptyWrap}>
             <Text style={s.emptyTitle}>Welcome aboard</Text>
             <Text style={s.emptySubtext}>
@@ -105,9 +161,156 @@ export default function HomeScreen() {
               <Text style={s.startBtnText}>Start your analysis</Text>
             </TouchableOpacity>
           </View>
+        ) : loading ? (
+          <HomeSkeleton />
         ) : (
           <>
-            {/* ===== Card 1: Monthly Income ===== */}
+            {/* ===== HERO: Top Money Move ===== */}
+            {topMove?.action && (
+              <View style={s.moveCard}>
+                <View style={s.moveHeader}>
+                  <Text style={s.cardTitle}>Top Recommendation</Text>
+                  {goalContext?.ukpfPriority?.label && (
+                    <View style={s.priorityBadge}>
+                      <Text style={s.priorityBadgeText}>
+                        {goalContext.ukpfPriority.label}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+
+                <Text style={s.moveAction}>{topMove.action}</Text>
+
+                {/* Goal trajectory insight */}
+                {goalContext?.insight && (
+                  <View style={s.insightBox}>
+                    <Text style={s.insightText}>{goalContext.insight}</Text>
+                  </View>
+                )}
+
+                {/* Impact metrics */}
+                <View style={s.moveMetrics}>
+                  {topMove.annualImpact > 0 && (
+                    <View style={s.moveMetric}>
+                      <Text style={s.moveMetricValue}>{formatCurrency(topMove.annualImpact)}</Text>
+                      <Text style={s.moveMetricLabel}>annual impact</Text>
+                    </View>
+                  )}
+                  {topMove.monthlySaving > 0 && (
+                    <View style={s.moveMetric}>
+                      <Text style={s.moveMetricValue}>{formatCurrency(topMove.monthlySaving)}</Text>
+                      <Text style={s.moveMetricLabel}>per month</Text>
+                    </View>
+                  )}
+                  {topMove.effort && (
+                    <View style={s.moveMetric}>
+                      <Text style={s.moveMetricValue}>{topMove.effort}</Text>
+                      <Text style={s.moveMetricLabel}>effort</Text>
+                    </View>
+                  )}
+                </View>
+
+                {/* Trajectory progress bar */}
+                {goalContext?.currentTrajectory && goalContext?.newTrajectory && (
+                  <View style={s.trajectoryWrap}>
+                    <View style={s.trajectoryLabels}>
+                      <Text style={s.trajectoryLabel}>Goal timeline</Text>
+                      <Text style={s.trajectorySaved}>
+                        {goalContext.currentTrajectory - goalContext.newTrajectory} months faster
+                      </Text>
+                    </View>
+                    <View style={s.trajectoryBarBg}>
+                      <View
+                        style={[
+                          s.trajectoryBarOld,
+                          { width: '100%' },
+                        ]}
+                      />
+                      <View
+                        style={[
+                          s.trajectoryBarNew,
+                          {
+                            width: `${Math.max(5, Math.round((goalContext.newTrajectory / goalContext.currentTrajectory) * 100))}%` as any,
+                          },
+                        ]}
+                      />
+                    </View>
+                    <View style={s.trajectoryNumbers}>
+                      <Text style={s.trajectoryNow}>Now: {goalContext.currentTrajectory}mo</Text>
+                      <Text style={s.trajectoryNew}>With move: {goalContext.newTrajectory}mo</Text>
+                    </View>
+                  </View>
+                )}
+
+                {/* Commit / Details */}
+                <View style={s.moveActions}>
+                  <TouchableOpacity
+                    style={[s.approveBtn, committed['top'] && s.committedBtn]}
+                    onPress={() => handleCommit('top')}
+                    activeOpacity={0.8}
+                    disabled={!!committed['top']}
+                  >
+                    <Ionicons
+                      name={committed['top'] ? 'checkmark-circle' : 'flash'}
+                      size={16}
+                      color={committed['top'] ? theme.colors.mint : theme.colors.bg}
+                      style={{ marginRight: 6 }}
+                    />
+                    <Text style={[s.approveBtnText, committed['top'] && s.committedBtnText]}>
+                      {committed['top'] ? 'Committed' : "I'll do this"}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={s.modifyBtn}
+                    onPress={() => setShowModify(!showModify)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={s.modifyBtnText}>{showModify ? 'Hide details' : 'Details'}</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {showModify && topMove.details && (
+                  <View style={s.modifyPanel}>
+                    {topMove.details.strategy && (
+                      <Text style={s.modifyTitle}>{topMove.details.strategy}</Text>
+                    )}
+                    {topMove.details.reasoning && (
+                      <Text style={s.modifyReasoning}>{topMove.details.reasoning}</Text>
+                    )}
+                    {topMove.details.items?.length > 0 && (
+                      <View style={s.modifyItems}>
+                        <Text style={s.modifySectionTitle}>Breakdown</Text>
+                        {topMove.details.items.map((item: any, i: number) => (
+                          <View key={i} style={s.modifyItemRow}>
+                            <Text style={s.modifyItemName}>{item.name}</Text>
+                            <Text style={s.modifyItemAmount}>{formatCurrency(item.amount)}/{item.frequency}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+                    {topMove.details.steps?.length > 0 && (
+                      <View style={s.modifySteps}>
+                        <Text style={s.modifySectionTitle}>Steps</Text>
+                        {topMove.details.steps.map((step: string, i: number) => (
+                          <View key={i} style={s.modifyStepRow}>
+                            <Text style={s.modifyStepNum}>{i + 1}</Text>
+                            <Text style={s.modifyStepText}>{step}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+                    {topMove.details.effect && (
+                      <View style={s.modifyEffect}>
+                        <Text style={s.modifyEffectLabel}>Effect on finances</Text>
+                        <Text style={s.modifyEffectText}>{topMove.details.effect}</Text>
+                      </View>
+                    )}
+                  </View>
+                )}
+              </View>
+            )}
+
+            {/* ===== Card 2: Monthly Income ===== */}
             <View style={s.card}>
               <Text style={s.cardTitle}>Monthly Income</Text>
               <Text style={s.bigNumber}>{formatCurrency(income)}</Text>
@@ -125,7 +328,7 @@ export default function HomeScreen() {
               )}
             </View>
 
-            {/* ===== Card 2: Budget Reality ===== */}
+            {/* ===== Card 3: Budget Reality ===== */}
             <View style={s.card}>
               <Text style={s.cardTitle}>Your Budget Reality</Text>
 
@@ -171,7 +374,11 @@ export default function HomeScreen() {
                           <Text style={[s.catAmount, { color: theme.colors.coral }]}>
                             {formatCurrency(item.monthly)}/mo
                           </Text>
-                          <Text style={s.expandArrow}>{isExpanded ? '\u25BE' : '\u25B8'}</Text>
+                          <Ionicons
+                            name={isExpanded ? 'chevron-down' : 'chevron-forward'}
+                            size={14}
+                            color={theme.colors.muted}
+                          />
                         </TouchableOpacity>
                         {isExpanded && item.txs?.length > 0 && (
                           <View style={s.txList}>
@@ -210,7 +417,11 @@ export default function HomeScreen() {
                           <Text style={[s.catAmount, { color: theme.colors.sky }]}>
                             {formatCurrency(item.monthly)}/mo
                           </Text>
-                          <Text style={s.expandArrow}>{isExpanded ? '\u25BE' : '\u25B8'}</Text>
+                          <Ionicons
+                            name={isExpanded ? 'chevron-down' : 'chevron-forward'}
+                            size={14}
+                            color={theme.colors.muted}
+                          />
                         </TouchableOpacity>
                         {isExpanded && item.txs?.length > 0 && (
                           <View style={s.txList}>
@@ -231,116 +442,6 @@ export default function HomeScreen() {
                 </>
               )}
             </View>
-
-            {/* ===== Card 3: Your Top Money Moves ===== */}
-            {topMove?.action && (
-              <View style={s.moveCard}>
-                <View style={s.moveHeader}>
-                  <Text style={s.cardTitle}>Top Recommendation</Text>
-                  {goalContext?.ukpfPriority?.label && (
-                    <View style={s.priorityBadge}>
-                      <Text style={s.priorityBadgeText}>
-                        Priority: {goalContext.ukpfPriority.label}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-
-                <Text style={s.moveAction}>{topMove.action}</Text>
-
-                {/* Goal trajectory insight */}
-                {goalContext?.insight && (
-                  <View style={s.insightBox}>
-                    <Text style={s.insightText}>{goalContext.insight}</Text>
-                  </View>
-                )}
-
-                {/* Impact metrics */}
-                <View style={s.moveMetrics}>
-                  {topMove.annualImpact > 0 && (
-                    <View style={s.moveMetric}>
-                      <Text style={s.moveMetricValue}>{formatCurrency(topMove.annualImpact)}</Text>
-                      <Text style={s.moveMetricLabel}>annual impact</Text>
-                    </View>
-                  )}
-                  {topMove.monthlySaving > 0 && (
-                    <View style={s.moveMetric}>
-                      <Text style={s.moveMetricValue}>{formatCurrency(topMove.monthlySaving)}</Text>
-                      <Text style={s.moveMetricLabel}>per month</Text>
-                    </View>
-                  )}
-                  {topMove.effort && (
-                    <View style={s.moveMetric}>
-                      <Text style={s.moveMetricValue}>{topMove.effort}</Text>
-                      <Text style={s.moveMetricLabel}>effort</Text>
-                    </View>
-                  )}
-                </View>
-
-                {/* Approve / Modify */}
-                <View style={s.moveActions}>
-                  <TouchableOpacity
-                    style={s.approveBtn}
-                    onPress={() =>
-                      confirm(
-                        'Coming soon',
-                        'Soon you\'ll be able to approve recommendations and we\'ll help set up automatic transfers, payment adjustments, and reminders for you.',
-                        () => {},
-                      )
-                    }
-                    activeOpacity={0.8}
-                  >
-                    <Text style={s.approveBtnText}>Approve</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={s.modifyBtn}
-                    onPress={() => setShowModify(!showModify)}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={s.modifyBtnText}>{showModify ? 'Hide details' : 'Modify'}</Text>
-                  </TouchableOpacity>
-                </View>
-
-                {showModify && topMove.details && (
-                  <View style={s.modifyPanel}>
-                    {topMove.details.strategy && (
-                      <Text style={s.modifyTitle}>{topMove.details.strategy}</Text>
-                    )}
-                    {topMove.details.reasoning && (
-                      <Text style={s.modifyReasoning}>{topMove.details.reasoning}</Text>
-                    )}
-                    {topMove.details.items?.length > 0 && (
-                      <View style={s.modifyItems}>
-                        <Text style={s.modifySectionTitle}>Breakdown</Text>
-                        {topMove.details.items.map((item: any, i: number) => (
-                          <View key={i} style={s.modifyItemRow}>
-                            <Text style={s.modifyItemName}>{item.name}</Text>
-                            <Text style={s.modifyItemAmount}>{formatCurrency(item.amount)}/{item.frequency}</Text>
-                          </View>
-                        ))}
-                      </View>
-                    )}
-                    {topMove.details.steps?.length > 0 && (
-                      <View style={s.modifySteps}>
-                        <Text style={s.modifySectionTitle}>Steps</Text>
-                        {topMove.details.steps.map((step: string, i: number) => (
-                          <View key={i} style={s.modifyStepRow}>
-                            <Text style={s.modifyStepNum}>{i + 1}</Text>
-                            <Text style={s.modifyStepText}>{step}</Text>
-                          </View>
-                        ))}
-                      </View>
-                    )}
-                    {topMove.details.effect && (
-                      <View style={s.modifyEffect}>
-                        <Text style={s.modifyEffectLabel}>Effect on finances</Text>
-                        <Text style={s.modifyEffectText}>{topMove.details.effect}</Text>
-                      </View>
-                    )}
-                  </View>
-                )}
-              </View>
-            )}
 
             {/* Other moves */}
             {allMoves.length > 1 && (
@@ -377,6 +478,7 @@ export default function HomeScreen() {
               onPress={() => router.push('/(main)/connect' as any)}
               activeOpacity={0.8}
             >
+              <Ionicons name="refresh" size={16} color={theme.colors.accent} style={{ marginRight: 6 }} />
               <Text style={s.newBtnText}>Run new analysis</Text>
             </TouchableOpacity>
           </>
@@ -389,7 +491,6 @@ export default function HomeScreen() {
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.bg },
   scroll: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 80 },
-  loadingWrap: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
   // Header
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
@@ -427,14 +528,13 @@ const s = StyleSheet.create({
   catRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: theme.colors.border },
   catName: { flex: 1, fontSize: 14, color: theme.colors.text2 },
   catAmount: { fontSize: 14, fontFamily: 'SpaceMono', marginRight: 8 },
-  expandArrow: { fontSize: 12, color: theme.colors.muted, width: 16, textAlign: 'center' },
   txList: { paddingLeft: 12, paddingVertical: 6, backgroundColor: 'rgba(255,255,255,0.02)', borderRadius: 4, marginBottom: 4 },
   txRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 5 },
   txDesc: { flex: 1, fontSize: 13, color: theme.colors.dim, marginRight: 8 },
   txAmt: { fontSize: 13, color: theme.colors.dim, fontFamily: 'SpaceMono' },
   txMore: { fontSize: 12, color: theme.colors.muted, paddingVertical: 4 },
 
-  // Move card
+  // Move card (HERO)
   moveCard: { backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.accent, borderRadius: theme.radius.lg, padding: 20, marginBottom: 16 },
   moveHeader: { marginBottom: 4 },
   priorityBadge: { alignSelf: 'flex-start', backgroundColor: 'rgba(232,200,114,0.1)', borderRadius: 4, paddingHorizontal: 8, paddingVertical: 3, marginTop: 8, marginBottom: 4 },
@@ -446,9 +546,25 @@ const s = StyleSheet.create({
   moveMetric: { flex: 1, alignItems: 'center', paddingVertical: 10, backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: theme.radius.sm },
   moveMetricValue: { fontSize: 18, fontWeight: '700', color: theme.colors.accent, fontFamily: 'SpaceMono' },
   moveMetricLabel: { fontSize: 11, color: theme.colors.dim, marginTop: 2 },
+
+  // Trajectory bar
+  trajectoryWrap: { marginBottom: 16 },
+  trajectoryLabels: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  trajectoryLabel: { fontSize: 12, color: theme.colors.dim, fontFamily: 'SpaceMono', letterSpacing: 0.5 },
+  trajectorySaved: { fontSize: 12, color: theme.colors.mint, fontFamily: 'SpaceMono', fontWeight: '600' },
+  trajectoryBarBg: { height: 8, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.06)', overflow: 'hidden', position: 'relative' },
+  trajectoryBarOld: { position: 'absolute', top: 0, left: 0, height: '100%', borderRadius: 4, backgroundColor: 'rgba(232,114,114,0.25)' },
+  trajectoryBarNew: { position: 'absolute', top: 0, left: 0, height: '100%', borderRadius: 4, backgroundColor: theme.colors.mint },
+  trajectoryNumbers: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 },
+  trajectoryNow: { fontSize: 11, color: theme.colors.dim },
+  trajectoryNew: { fontSize: 11, color: theme.colors.mint, fontWeight: '600' },
+
+  // Actions
   moveActions: { flexDirection: 'row', gap: 12 },
-  approveBtn: { flex: 1, backgroundColor: theme.colors.accent, borderRadius: theme.radius.md, padding: 14, alignItems: 'center' },
+  approveBtn: { flex: 1, backgroundColor: theme.colors.accent, borderRadius: theme.radius.md, padding: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' },
   approveBtnText: { fontFamily: 'SpaceMono', fontSize: 13, fontWeight: '700', color: theme.colors.bg, letterSpacing: 1 },
+  committedBtn: { backgroundColor: theme.colors.mintDim, borderWidth: 1, borderColor: theme.colors.mint },
+  committedBtnText: { color: theme.colors.mint },
   modifyBtn: { flex: 1, borderWidth: 1, borderColor: theme.colors.accent, borderRadius: theme.radius.md, padding: 14, alignItems: 'center' },
   modifyBtnText: { fontFamily: 'SpaceMono', fontSize: 13, fontWeight: '600', color: theme.colors.accent, letterSpacing: 1 },
 
@@ -484,6 +600,6 @@ const s = StyleSheet.create({
   effortTextHigh: { color: theme.colors.coral },
 
   // New analysis
-  newBtn: { borderWidth: 1, borderColor: theme.colors.accent, borderRadius: theme.radius.md, padding: 16, alignItems: 'center', marginTop: 4 },
+  newBtn: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: theme.colors.accent, borderRadius: theme.radius.md, padding: 16, marginTop: 4 },
   newBtnText: { fontFamily: 'SpaceMono', fontSize: 13, color: theme.colors.accent, fontWeight: '600', letterSpacing: 1 },
 });

@@ -8,6 +8,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../../theme';
 import { supabase } from '../../lib/supabase';
 import { confirm } from '../../lib/confirm';
@@ -84,32 +85,32 @@ export default function ProfileScreen() {
   const menuItems: MenuItem[] = [
     {
       label: 'Add Account',
-      icon: '+',
+      icon: 'add-circle-outline',
       onPress: () => router.push('/(main)/connect' as any),
     },
     {
       label: 'Report a Bug',
-      icon: '\u2691',
+      icon: 'bug-outline',
       onPress: () => confirm('Report a Bug', 'Please email us at support@bocy.app with details of the issue.', () => {}),
     },
     {
       label: 'Notifications',
-      icon: '\u266A',
+      icon: 'notifications-outline',
       onPress: () => confirm('Notifications', 'Notification preferences will be available soon.', () => {}),
     },
     {
       label: 'Goals',
-      icon: '\u25CE',
+      icon: 'flag-outline',
       onPress: () => router.push('/(main)/goals' as any),
     },
     {
       label: 'Agreements',
-      icon: '\u2637',
+      icon: 'document-text-outline',
       onPress: () => confirm('Agreements', 'Terms of service and privacy policy will be available soon.', () => {}),
     },
     {
       label: 'Security',
-      icon: '\u2616',
+      icon: 'shield-checkmark-outline',
       onPress: () => setShowSecurity(!showSecurity),
     },
   ];
@@ -122,7 +123,10 @@ export default function ProfileScreen() {
         {/* Header with back */}
         <View style={s.header}>
           <TouchableOpacity onPress={() => router.back()} style={s.backBtn} activeOpacity={0.7}>
-            <Text style={s.backText}>{'\u2190'} Back</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Ionicons name="arrow-back" size={16} color={theme.colors.accent} />
+              <Text style={s.backText}>Back</Text>
+            </View>
           </TouchableOpacity>
           <Text style={s.headerTitle}>Profile</Text>
           <View style={{ width: 60 }} />
@@ -147,12 +151,14 @@ export default function ProfileScreen() {
                 activeOpacity={0.7}
               >
                 <View style={s.menuIconWrap}>
-                  <Text style={[s.menuIcon, item.color ? { color: item.color } : null]}>{item.icon}</Text>
+                  <Ionicons name={item.icon as any} size={18} color={item.color || theme.colors.text2} />
                 </View>
                 <Text style={[s.menuLabel, item.color ? { color: item.color } : null]}>{item.label}</Text>
-                <Text style={s.menuChevron}>
-                  {item.label === 'Security' ? (showSecurity ? '\u25BE' : '\u25B8') : '\u25B8'}
-                </Text>
+                <Ionicons
+                  name={item.label === 'Security' ? (showSecurity ? 'chevron-down' : 'chevron-forward') : 'chevron-forward'}
+                  size={16}
+                  color={theme.colors.muted}
+                />
               </TouchableOpacity>
 
               {/* Security sub-menu */}
