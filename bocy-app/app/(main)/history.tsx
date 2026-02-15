@@ -8,6 +8,7 @@ import {
   ScrollView,
   ActivityIndicator,
   Modal,
+  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { theme } from '../../theme';
@@ -27,12 +28,49 @@ type Analysis = {
   all_moves: any[];
 };
 
+// Category icons for spending breakdown
+const CATEGORY_ICONS: Record<string, string> = {
+  'rent': '\u2302',
+  'housing': '\u2302',
+  'mortgage': '\u2302',
+  'food': '\u2615',
+  'groceries': '\u2615',
+  'supermarket': '\u2615',
+  'bills': '\u26A1',
+  'utilities': '\u26A1',
+  'energy': '\u26A1',
+  'transport': '\u2708',
+  'transportation': '\u2708',
+  'travel': '\u2708',
+  'shopping': '\u2605',
+  'retail': '\u2605',
+  'clothing': '\u2605',
+  'subscriptions': '\u221E',
+  'subscription': '\u221E',
+  'entertainment': '\u266A',
+  'dining': '\u2615',
+  'restaurants': '\u2615',
+  'insurance': '\u2606',
+  'health': '\u2606',
+  'fitness': '\u2606',
+  'default': '\u25CF',
+};
+
+const getCategoryIcon = (category: string): string => {
+  const lower = category.toLowerCase();
+  for (const [key, icon] of Object.entries(CATEGORY_ICONS)) {
+    if (lower.includes(key)) return icon;
+  }
+  return CATEGORY_ICONS.default;
+};
+
 export default function DashboardScreen() {
   const router = useRouter();
   const [userName, setUserName] = useState('');
   const [latest, setLatest] = useState<Analysis | null>(null);
   const [loading, setLoading] = useState(true);
   const [showProfile, setShowProfile] = useState(false);
+  const [showModify, setShowModify] = useState(false);
 
   useEffect(() => {
     loadDashboard();
@@ -68,39 +106,59 @@ export default function DashboardScreen() {
     await supabase.auth.signOut();
   };
 
+  const handleDeleteAccount = () => {
+    setShowProfile(false);
+    Alert.alert(
+      'Delete account',
+      'This will permanently delete your account and all your data. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { data: { user } } = await supabase.auth.getUser();
+              if (user) {
+                // Delete user data first
+                await supabase.from('analyses').delete().eq('user_id', user.id);
+                await supabase.from('goals').delete().eq('user_id', user.id);
+              }
+              await supabase.auth.signOut();
+              Alert.alert('Account deleted', 'Your account and data have been removed.');
+            } catch (err) {
+              Alert.alert('Something went wrong', 'Please try again or contact support.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const formatCurrency = (n: number) => {
-    if (n >= 1000) return `£${(n / 1000).toFixed(1)}k`;
-    return `£${Math.round(n)}`;
+    if (Math.abs(n) >= 1000) return `\u00A3${(n / 1000).toFixed(1)}k`;
+    return `\u00A3${Math.abs(Math.round(n)).toLocaleString()}`;
+  };
+
+  const formatExact = (n: number) => {
+    return `\u00A3${Math.abs(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
   };
 
   const firstName = userName.split(' ')[0] || 'there';
 
-  // Pick the top 2 most actionable moves
-  const getTopMoves = (): { action: string; impact: number; effort: string }[] => {
-    if (!latest) return [];
-    const moves: any[] = latest.all_moves || [];
-    if (moves.length === 0 && latest.top_move?.action) {
-      return [{ action: latest.top_move.action, impact: latest.top_move.annualImpact || 0, effort: latest.top_move.effort || 'low' }];
-    }
-    return moves.slice(0, 2).map(m => ({
-      action: m.action,
-      impact: m.annualImpact || 0,
-      effort: m.effort || 'low',
-    }));
-  };
-
-  const topMoves = getTopMoves();
-
-  // Budget breakdown
-  const nonDisc = latest?.non_discretionary?.total || 0;
-  const disc = latest?.discretionary?.total || 0;
+  // Budget data
+  const income = latest?.monthly_income || 0;
+  const spending = latest?.monthly_spending || 0;
   const surplus = latest?.surplus || 0;
-  const totalSpending = nonDisc + disc;
-  const totalOut = totalSpending + Math.max(surplus, 0);
 
-  const nonDiscPct = totalOut > 0 ? Math.round((nonDisc / totalOut) * 100) : 0;
-  const discPct = totalOut > 0 ? Math.round((disc / totalOut) * 100) : 0;
-  const surplusPct = totalOut > 0 ? Math.round((Math.max(surplus, 0) / totalOut) * 100) : 0;
+  // Category breakdowns
+  const nonDiscItems: any[] = latest?.non_discretionary?.items || [];
+  const discItems: any[] = latest?.discretionary?.items || [];
+  const totalSpending = spending || ((latest?.non_discretionary?.total || 0) + (latest?.discretionary?.total || 0));
+
+  // Top move
+  const topMove = latest?.top_move;
+  const allMoves: any[] = latest?.all_moves || [];
 
   return (
     <SafeAreaView style={s.container}>
@@ -119,7 +177,10 @@ export default function DashboardScreen() {
           <View style={s.profileMenu}>
             <Text style={s.profileMenuName}>{userName || 'Account'}</Text>
             <TouchableOpacity style={s.profileMenuItem} onPress={handleSignOut}>
-              <Text style={s.profileMenuItemText}>Sign out</Text>
+              <Text style={s.profileMenuSignOut}>Sign out</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={s.profileMenuItem} onPress={handleDeleteAccount}>
+              <Text style={s.profileMenuDelete}>Delete account</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -128,9 +189,7 @@ export default function DashboardScreen() {
       <ScrollView contentContainerStyle={s.scroll}>
         {/* Header: greeting + profile icon */}
         <View style={s.header}>
-          <View style={s.greeting}>
-            <Text style={s.greetingText}>Hi, {firstName}</Text>
-          </View>
+          <Text style={s.greetingText}>Hi, {firstName}</Text>
           <TouchableOpacity
             style={s.profileIcon}
             onPress={() => setShowProfile(true)}
@@ -162,76 +221,206 @@ export default function DashboardScreen() {
           </View>
         ) : (
           <>
-            {/* Card 1: Monthly Income */}
-            <View style={s.card}>
-              <Text style={s.cardLabel}>Monthly Income</Text>
-              <Text style={s.cardBigNumber}>{formatCurrency(latest.monthly_income)}</Text>
-            </View>
+            {/* ===== Card 1: Income ===== */}
+            <View style={s.incomeCard}>
+              <Text style={s.cardLabel}>INCOME</Text>
+              <Text style={s.incomeBig}>{formatCurrency(income)}</Text>
 
-            {/* Card 2: Your Budget Reality */}
-            <View style={s.card}>
-              <Text style={s.cardLabel}>Your Budget Reality</Text>
-
-              {/* Visual bar */}
-              <View style={s.budgetBar}>
-                {nonDiscPct > 0 && (
-                  <View style={[s.budgetBarSeg, { flex: nonDiscPct, backgroundColor: theme.colors.coral }]} />
-                )}
-                {discPct > 0 && (
-                  <View style={[s.budgetBarSeg, { flex: discPct, backgroundColor: theme.colors.sky }]} />
-                )}
-                {surplusPct > 0 && (
-                  <View style={[s.budgetBarSeg, { flex: surplusPct, backgroundColor: theme.colors.mint }]} />
-                )}
-              </View>
-
-              <View style={s.budgetLegend}>
-                <View style={s.budgetLegendItem}>
-                  <View style={[s.legendDot, { backgroundColor: theme.colors.coral }]} />
-                  <Text style={s.legendText}>Essentials</Text>
-                  <Text style={[s.legendValue, { color: theme.colors.coral }]}>{formatCurrency(nonDisc)}</Text>
+              <View style={s.incomeRow}>
+                <View style={s.incomeMetric}>
+                  <Text style={s.incomeMetricLabel}>Expense</Text>
+                  <Text style={[s.incomeMetricValue, { color: theme.colors.coral }]}>
+                    {formatExact(spending)}
+                  </Text>
                 </View>
-                <View style={s.budgetLegendItem}>
-                  <View style={[s.legendDot, { backgroundColor: theme.colors.sky }]} />
-                  <Text style={s.legendText}>Lifestyle</Text>
-                  <Text style={[s.legendValue, { color: theme.colors.sky }]}>{formatCurrency(disc)}</Text>
-                </View>
-                <View style={s.budgetLegendItem}>
-                  <View style={[s.legendDot, { backgroundColor: surplus >= 0 ? theme.colors.mint : theme.colors.coral }]} />
-                  <Text style={s.legendText}>Surplus</Text>
-                  <Text style={[s.legendValue, { color: surplus >= 0 ? theme.colors.mint : theme.colors.coral }]}>
-                    {surplus >= 0 ? '+' : ''}{formatCurrency(surplus)}
+                <View style={s.incomeMetricDivider} />
+                <View style={s.incomeMetric}>
+                  <Text style={s.incomeMetricLabel}>Surplus</Text>
+                  <Text style={[s.incomeMetricValue, { color: surplus >= 0 ? theme.colors.mint : theme.colors.coral }]}>
+                    {formatExact(surplus)}
                   </Text>
                 </View>
               </View>
             </View>
 
-            {/* Card 3: Recommendations */}
-            <View style={s.card}>
-              <Text style={s.cardLabel}>Recommendations</Text>
+            {/* ===== Card 2: Insight / Recommendations ===== */}
+            <View style={s.insightCard}>
+              <Text style={s.cardLabel}>INSIGHT</Text>
 
-              {topMoves.length > 0 ? (
-                <View style={s.movesList}>
-                  {topMoves.map((move, i) => (
-                    <View key={i} style={s.moveRow}>
-                      <View style={s.moveNumber}>
-                        <Text style={s.moveNumberText}>{i + 1}</Text>
-                      </View>
-                      <View style={s.moveContent}>
-                        <Text style={s.moveAction}>{move.action}</Text>
-                        {move.impact > 0 && (
-                          <Text style={s.moveImpact}>
-                            Potential impact: {formatCurrency(move.impact)}/year
+              {topMove?.action ? (
+                <>
+                  <Text style={s.insightAction}>{topMove.action}</Text>
+
+                  {/* Impact metrics */}
+                  {(topMove.annualImpact > 0 || topMove.details) && (
+                    <View style={s.insightMetrics}>
+                      {topMove.annualImpact > 0 && (
+                        <View style={s.insightMetric}>
+                          <Text style={s.insightMetricValue}>{formatCurrency(topMove.annualImpact)}</Text>
+                          <Text style={s.insightMetricLabel}>annual impact</Text>
+                        </View>
+                      )}
+                      {topMove.monthlySaving > 0 && (
+                        <View style={s.insightMetric}>
+                          <Text style={s.insightMetricValue}>{formatCurrency(topMove.monthlySaving)}</Text>
+                          <Text style={s.insightMetricLabel}>per month</Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
+
+                  {/* Second recommendation */}
+                  {allMoves.length > 1 && allMoves[1]?.action && (
+                    <View style={s.secondMove}>
+                      <View style={s.secondMoveDot} />
+                      <View style={s.secondMoveContent}>
+                        <Text style={s.secondMoveAction}>{allMoves[1].action}</Text>
+                        {allMoves[1].annualImpact > 0 && (
+                          <Text style={s.secondMoveImpact}>
+                            {formatCurrency(allMoves[1].annualImpact)}/yr impact
                           </Text>
                         )}
                       </View>
                     </View>
-                  ))}
-                </View>
+                  )}
+
+                  {/* Approve / Modify buttons */}
+                  <View style={s.moveActions}>
+                    <TouchableOpacity
+                      style={s.approveBtn}
+                      onPress={() =>
+                        Alert.alert(
+                          'Coming soon',
+                          'Soon you\'ll be able to approve recommendations and we\'ll help set up automatic transfers, payment adjustments, and reminders for you.',
+                          [{ text: 'Got it' }]
+                        )
+                      }
+                      activeOpacity={0.8}
+                    >
+                      <Text style={s.approveBtnText}>Approve</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={s.modifyBtn}
+                      onPress={() => setShowModify(!showModify)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={s.modifyBtnText}>{showModify ? 'Hide details' : 'Modify'}</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Modify detail panel */}
+                  {showModify && topMove.details && (
+                    <View style={s.modifyPanel}>
+                      {topMove.details.strategy && (
+                        <Text style={s.modifyTitle}>{topMove.details.strategy}</Text>
+                      )}
+                      {topMove.details.reasoning && (
+                        <Text style={s.modifyReasoning}>{topMove.details.reasoning}</Text>
+                      )}
+                      {topMove.details.items?.length > 0 && (
+                        <View style={s.modifyItems}>
+                          <Text style={s.modifySectionTitle}>Breakdown</Text>
+                          {topMove.details.items.map((item: any, i: number) => (
+                            <View key={i} style={s.modifyItemRow}>
+                              <Text style={s.modifyItemName}>{item.name}</Text>
+                              <Text style={s.modifyItemAmount}>
+                                {formatCurrency(item.amount)}/{item.frequency}
+                              </Text>
+                            </View>
+                          ))}
+                        </View>
+                      )}
+                      {topMove.details.steps?.length > 0 && (
+                        <View style={s.modifySteps}>
+                          <Text style={s.modifySectionTitle}>Steps</Text>
+                          {topMove.details.steps.map((step: string, i: number) => (
+                            <View key={i} style={s.modifyStepRow}>
+                              <Text style={s.modifyStepNum}>{i + 1}</Text>
+                              <Text style={s.modifyStepText}>{step}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      )}
+                      {topMove.details.effect && (
+                        <View style={s.modifyEffect}>
+                          <Text style={s.modifyEffectLabel}>Effect on finances</Text>
+                          <Text style={s.modifyEffectText}>{topMove.details.effect}</Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
+                </>
               ) : (
-                <Text style={s.noMovesText}>
+                <Text style={s.noInsightText}>
                   Run an analysis to receive personalised recommendations.
                 </Text>
+              )}
+            </View>
+
+            {/* ===== Card 3: Where Your Money Goes ===== */}
+            <View style={s.spendingCard}>
+              <Text style={s.cardLabel}>WHERE YOUR MONEY GOES</Text>
+
+              {/* Non-negotiable section */}
+              {nonDiscItems.length > 0 && (
+                <>
+                  <Text style={s.spendingSectionTitle}>Non-negotiable</Text>
+                  <View style={s.categoryList}>
+                    {nonDiscItems.slice(0, 6).map((item: any, i: number) => {
+                      const pct = totalSpending > 0 ? Math.round((item.monthly / totalSpending) * 100) : 0;
+                      return (
+                        <View key={i} style={s.categoryRow}>
+                          <View style={s.categoryIconWrap}>
+                            <Text style={s.categoryIcon}>{getCategoryIcon(item.category)}</Text>
+                          </View>
+                          <View style={s.categoryInfo}>
+                            <View style={s.categoryNameRow}>
+                              <Text style={s.categoryName}>{item.category}</Text>
+                              <Text style={[s.categoryAmount, { color: theme.colors.coral }]}>
+                                {formatCurrency(item.monthly)}/mo
+                              </Text>
+                            </View>
+                            <View style={s.progressBarBg}>
+                              <View style={[s.progressBarFill, { width: `${Math.min(pct, 100)}%` as any, backgroundColor: theme.colors.coral }]} />
+                            </View>
+                          </View>
+                          <Text style={s.categoryPct}>{pct}%</Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                </>
+              )}
+
+              {/* Lifestyle section */}
+              {discItems.length > 0 && (
+                <>
+                  <Text style={[s.spendingSectionTitle, nonDiscItems.length > 0 && { marginTop: 20 }]}>Lifestyle</Text>
+                  <View style={s.categoryList}>
+                    {discItems.slice(0, 6).map((item: any, i: number) => {
+                      const pct = totalSpending > 0 ? Math.round((item.monthly / totalSpending) * 100) : 0;
+                      return (
+                        <View key={i} style={s.categoryRow}>
+                          <View style={[s.categoryIconWrap, { backgroundColor: theme.colors.skyDim }]}>
+                            <Text style={[s.categoryIcon, { color: theme.colors.sky }]}>{getCategoryIcon(item.category)}</Text>
+                          </View>
+                          <View style={s.categoryInfo}>
+                            <View style={s.categoryNameRow}>
+                              <Text style={s.categoryName}>{item.category}</Text>
+                              <Text style={[s.categoryAmount, { color: theme.colors.sky }]}>
+                                {formatCurrency(item.monthly)}/mo
+                              </Text>
+                            </View>
+                            <View style={s.progressBarBg}>
+                              <View style={[s.progressBarFill, { width: `${Math.min(pct, 100)}%` as any, backgroundColor: theme.colors.sky }]} />
+                            </View>
+                          </View>
+                          <Text style={s.categoryPct}>{pct}%</Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                </>
               )}
             </View>
 
@@ -266,9 +455,8 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 28,
+    marginBottom: 24,
   },
-  greeting: {},
   greetingText: {
     fontSize: 26,
     fontWeight: '700',
@@ -305,7 +493,7 @@ const s = StyleSheet.create({
     borderRadius: theme.radius.md,
     paddingVertical: 8,
     paddingHorizontal: 4,
-    minWidth: 180,
+    minWidth: 200,
   },
   profileMenuName: {
     fontSize: 14,
@@ -320,7 +508,11 @@ const s = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
-  profileMenuItemText: {
+  profileMenuSignOut: {
+    fontSize: 14,
+    color: theme.colors.text2,
+  },
+  profileMenuDelete: {
     fontSize: 14,
     color: theme.colors.coral,
   },
@@ -360,8 +552,17 @@ const s = StyleSheet.create({
     color: theme.colors.bg,
   },
 
-  // Cards
-  card: {
+  // Shared card label
+  cardLabel: {
+    fontFamily: 'SpaceMono',
+    fontSize: 11,
+    color: theme.colors.dim,
+    letterSpacing: 1.5,
+    marginBottom: 12,
+  },
+
+  // ===== Income Card =====
+  incomeCard: {
     backgroundColor: theme.colors.surface,
     borderWidth: 1,
     borderColor: theme.colors.border,
@@ -369,103 +570,308 @@ const s = StyleSheet.create({
     padding: 20,
     marginBottom: 14,
   },
-  cardLabel: {
-    fontFamily: 'SpaceMono',
-    fontSize: 11,
-    color: theme.colors.dim,
-    letterSpacing: 1.5,
-    textTransform: 'uppercase',
-    marginBottom: 12,
-  },
-  cardBigNumber: {
-    fontSize: 34,
+  incomeBig: {
+    fontSize: 36,
     fontWeight: '700',
     color: theme.colors.text,
     fontFamily: 'SpaceMono',
-  },
-
-  // Budget reality
-  budgetBar: {
-    flexDirection: 'row',
-    height: 8,
-    borderRadius: 4,
-    overflow: 'hidden',
     marginBottom: 16,
-    gap: 2,
   },
-  budgetBarSeg: {
-    borderRadius: 4,
-  },
-  budgetLegend: {
-    gap: 10,
-  },
-  budgetLegendItem: {
+  incomeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
   },
-  legendDot: {
+  incomeMetric: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  incomeMetricDivider: {
+    width: 1,
+    height: 32,
+    backgroundColor: theme.colors.border,
+  },
+  incomeMetricLabel: {
+    fontSize: 12,
+    color: theme.colors.dim,
+    marginBottom: 4,
+  },
+  incomeMetricValue: {
+    fontSize: 17,
+    fontWeight: '700',
+    fontFamily: 'SpaceMono',
+  },
+
+  // ===== Insight Card =====
+  insightCard: {
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1,
+    borderColor: theme.colors.accent,
+    borderRadius: theme.radius.lg,
+    padding: 20,
+    marginBottom: 14,
+  },
+  insightAction: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: theme.colors.text,
+    lineHeight: 24,
+    marginBottom: 14,
+  },
+  insightMetrics: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 14,
+  },
+  insightMetric: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 10,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: theme.radius.sm,
+  },
+  insightMetricValue: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: theme.colors.accent,
+    fontFamily: 'SpaceMono',
+  },
+  insightMetricLabel: {
+    fontSize: 11,
+    color: theme.colors.dim,
+    marginTop: 2,
+  },
+  secondMove: {
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'flex-start',
+    paddingTop: 14,
+    marginBottom: 14,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+  },
+  secondMoveDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
+    backgroundColor: theme.colors.accentDim,
+    marginTop: 6,
   },
-  legendText: {
+  secondMoveContent: {
     flex: 1,
+  },
+  secondMoveAction: {
     fontSize: 14,
     color: theme.colors.text2,
+    lineHeight: 21,
   },
-  legendValue: {
-    fontSize: 14,
-    fontFamily: 'SpaceMono',
-    fontWeight: '600',
-  },
-
-  // Recommendations
-  movesList: {
-    gap: 14,
-  },
-  moveRow: {
-    flexDirection: 'row',
-    gap: 14,
-    alignItems: 'flex-start',
-  },
-  moveNumber: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: theme.colors.accentDim,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 2,
-  },
-  moveNumberText: {
-    fontFamily: 'SpaceMono',
-    fontSize: 13,
-    fontWeight: '700',
-    color: theme.colors.accent,
-  },
-  moveContent: {
-    flex: 1,
-  },
-  moveAction: {
-    fontSize: 15,
-    color: theme.colors.text,
-    lineHeight: 22,
-    fontWeight: '500',
-  },
-  moveImpact: {
-    fontSize: 13,
-    color: theme.colors.mint,
+  secondMoveImpact: {
+    fontSize: 12,
+    color: theme.colors.dim,
     fontFamily: 'SpaceMono',
     marginTop: 4,
   },
-  noMovesText: {
+  noInsightText: {
     fontSize: 14,
     color: theme.colors.dim,
     lineHeight: 21,
   },
 
-  // New analysis
+  // Approve / Modify
+  moveActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  approveBtn: {
+    flex: 1,
+    backgroundColor: theme.colors.accent,
+    borderRadius: theme.radius.md,
+    padding: 14,
+    alignItems: 'center',
+  },
+  approveBtnText: {
+    fontFamily: 'SpaceMono',
+    fontSize: 13,
+    fontWeight: '700',
+    color: theme.colors.bg,
+    letterSpacing: 1,
+  },
+  modifyBtn: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: theme.colors.accent,
+    borderRadius: theme.radius.md,
+    padding: 14,
+    alignItems: 'center',
+  },
+  modifyBtnText: {
+    fontFamily: 'SpaceMono',
+    fontSize: 13,
+    fontWeight: '600',
+    color: theme.colors.accent,
+    letterSpacing: 1,
+  },
+
+  // Modify panel
+  modifyPanel: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+  },
+  modifyTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: theme.colors.text,
+    marginBottom: 10,
+  },
+  modifyReasoning: {
+    fontSize: 14,
+    color: theme.colors.text2,
+    lineHeight: 21,
+    marginBottom: 16,
+  },
+  modifyItems: {
+    marginBottom: 16,
+  },
+  modifySectionTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: theme.colors.dim,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+  },
+  modifyItemRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+  },
+  modifyItemName: {
+    fontSize: 14,
+    color: theme.colors.text2,
+  },
+  modifyItemAmount: {
+    fontSize: 14,
+    color: theme.colors.accent,
+    fontFamily: 'SpaceMono',
+  },
+  modifySteps: {
+    marginBottom: 16,
+  },
+  modifyStepRow: {
+    flexDirection: 'row',
+    gap: 10,
+    paddingVertical: 6,
+  },
+  modifyStepNum: {
+    fontSize: 13,
+    color: theme.colors.accent,
+    fontFamily: 'SpaceMono',
+    width: 20,
+    textAlign: 'center',
+  },
+  modifyStepText: {
+    flex: 1,
+    fontSize: 14,
+    color: theme.colors.text2,
+    lineHeight: 20,
+  },
+  modifyEffect: {
+    backgroundColor: 'rgba(114,232,176,0.06)',
+    borderRadius: theme.radius.sm,
+    padding: 14,
+    borderLeftWidth: 3,
+    borderLeftColor: theme.colors.mint,
+  },
+  modifyEffectLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: theme.colors.mint,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  modifyEffectText: {
+    fontSize: 14,
+    color: theme.colors.text2,
+    lineHeight: 20,
+  },
+
+  // ===== Where Your Money Goes =====
+  spendingCard: {
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radius.lg,
+    padding: 20,
+    marginBottom: 14,
+  },
+  spendingSectionTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: theme.colors.text2,
+    marginBottom: 12,
+  },
+  categoryList: {
+    gap: 14,
+  },
+  categoryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  categoryIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: theme.colors.coralDim,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  categoryIcon: {
+    fontSize: 16,
+    color: theme.colors.coral,
+  },
+  categoryInfo: {
+    flex: 1,
+  },
+  categoryNameRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  categoryName: {
+    fontSize: 14,
+    color: theme.colors.text,
+    fontWeight: '500',
+  },
+  categoryAmount: {
+    fontSize: 13,
+    fontFamily: 'SpaceMono',
+    fontWeight: '600',
+  },
+  progressBarBg: {
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    borderRadius: 2,
+  },
+  categoryPct: {
+    fontSize: 12,
+    fontFamily: 'SpaceMono',
+    color: theme.colors.dim,
+    width: 32,
+    textAlign: 'right',
+  },
+
+  // New analysis button
   newBtn: {
     borderWidth: 1,
     borderColor: theme.colors.accent,
