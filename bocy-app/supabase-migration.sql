@@ -1,14 +1,11 @@
 -- =============================================
--- BOCY APP — Fresh Supabase Database Setup
+-- BOCY APP — Supabase Database Setup
 -- Run this in the Supabase SQL Editor
+-- Safe to re-run on existing databases
 -- =============================================
 
--- 1. Drop existing tables (clears all data)
-DROP TABLE IF EXISTS analyses CASCADE;
-DROP TABLE IF EXISTS goals CASCADE;
-
--- 2. Create goals table
-CREATE TABLE goals (
+-- 1. Create goals table (if not exists)
+CREATE TABLE IF NOT EXISTS goals (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL UNIQUE,
   created_at timestamptz DEFAULT now() NOT NULL,
@@ -19,8 +16,8 @@ CREATE TABLE goals (
   target_amount numeric
 );
 
--- 3. Create analyses table
-CREATE TABLE analyses (
+-- 2. Create analyses table (if not exists)
+CREATE TABLE IF NOT EXISTS analyses (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
   created_at timestamptz DEFAULT now() NOT NULL,
@@ -38,47 +35,45 @@ CREATE TABLE analyses (
   goal_context jsonb
 );
 
--- 4. Create indexes
-CREATE INDEX idx_analyses_user_id ON analyses(user_id);
-CREATE INDEX idx_analyses_created_at ON analyses(created_at DESC);
-CREATE INDEX idx_goals_user_id ON goals(user_id);
+-- 3. Add any missing columns (safe to re-run)
+ALTER TABLE analyses ADD COLUMN IF NOT EXISTS goal_context jsonb;
+
+-- 4. Create indexes (if not exists)
+CREATE INDEX IF NOT EXISTS idx_analyses_user_id ON analyses(user_id);
+CREATE INDEX IF NOT EXISTS idx_analyses_created_at ON analyses(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_goals_user_id ON goals(user_id);
 
 -- 5. Enable Row Level Security
 ALTER TABLE goals ENABLE ROW LEVEL SECURITY;
 ALTER TABLE analyses ENABLE ROW LEVEL SECURITY;
 
 -- 6. RLS Policies — users can only access their own data
-CREATE POLICY "Users can read own goals"
-  ON goals FOR SELECT
-  USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can insert own goals"
-  ON goals FOR INSERT
-  WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can update own goals"
-  ON goals FOR UPDATE
-  USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can delete own goals"
-  ON goals FOR DELETE
-  USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can read own analyses"
-  ON analyses FOR SELECT
-  USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can insert own analyses"
-  ON analyses FOR INSERT
-  WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can update own analyses"
-  ON analyses FOR UPDATE
-  USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can delete own analyses"
-  ON analyses FOR DELETE
-  USING (auth.uid() = user_id);
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'goals' AND policyname = 'Users can read own goals') THEN
+    CREATE POLICY "Users can read own goals" ON goals FOR SELECT USING (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'goals' AND policyname = 'Users can insert own goals') THEN
+    CREATE POLICY "Users can insert own goals" ON goals FOR INSERT WITH CHECK (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'goals' AND policyname = 'Users can update own goals') THEN
+    CREATE POLICY "Users can update own goals" ON goals FOR UPDATE USING (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'goals' AND policyname = 'Users can delete own goals') THEN
+    CREATE POLICY "Users can delete own goals" ON goals FOR DELETE USING (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'analyses' AND policyname = 'Users can read own analyses') THEN
+    CREATE POLICY "Users can read own analyses" ON analyses FOR SELECT USING (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'analyses' AND policyname = 'Users can insert own analyses') THEN
+    CREATE POLICY "Users can insert own analyses" ON analyses FOR INSERT WITH CHECK (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'analyses' AND policyname = 'Users can update own analyses') THEN
+    CREATE POLICY "Users can update own analyses" ON analyses FOR UPDATE USING (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'analyses' AND policyname = 'Users can delete own analyses') THEN
+    CREATE POLICY "Users can delete own analyses" ON analyses FOR DELETE USING (auth.uid() = user_id);
+  END IF;
+END $$;
 
 -- 7. Updated_at trigger for goals
 CREATE OR REPLACE FUNCTION update_updated_at()
@@ -89,11 +84,11 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS goals_updated_at ON goals;
 CREATE TRIGGER goals_updated_at
   BEFORE UPDATE ON goals
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at();
 
--- 8. Delete all existing auth users (optional — uncomment if you want full reset)
--- WARNING: This deletes ALL users. Only run if you truly want a fresh start.
--- DELETE FROM auth.users;
+-- 8. Reload PostgREST schema cache
+NOTIFY pgrst, 'reload schema';
