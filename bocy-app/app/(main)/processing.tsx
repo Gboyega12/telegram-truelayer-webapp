@@ -7,15 +7,16 @@ import {
   Animated,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../../theme';
 import { supabase } from '../../lib/supabase';
 
 const STEPS = [
-  { label: 'Reading transactions', duration: 1500 },
-  { label: 'Identifying merchants', duration: 2000 },
-  { label: 'Detecting patterns', duration: 2000 },
-  { label: 'Analysing against your goals', duration: 1500 },
-  { label: 'Finding your #1 move', duration: 1000 },
+  { label: 'Reading your transactions', duration: 1500 },
+  { label: 'Recognising merchants', duration: 2000 },
+  { label: 'Spotting patterns in your spending', duration: 2000 },
+  { label: 'Aligning with your goals', duration: 1500 },
+  { label: 'Building your recommendations', duration: 1000 },
 ];
 
 export default function ProcessingScreen() {
@@ -50,13 +51,48 @@ export default function ProcessingScreen() {
         setCurrentStep(i);
         // On the actual processing step, run the engine
         if (i === 2) {
-          // Dynamically import the engine to avoid loading it on other screens
+          // Dynamically import the engine and move engine
           const EnrichmentEngine = (await import('../../lib/enrichment-engine')).default;
+          const { findMostMaterialMove } = await import('../../lib/move-engine');
           const engine = new EnrichmentEngine();
           const result = await engine.enrich(csvData || '');
 
-          // Save analysis to Supabase
+          // Load user goals from Supabase for move ranking
           const { data: { user } } = await supabase.auth.getUser();
+          let userGoals = parsedGoals;
+          if (user) {
+            const { data: goalsData } = await supabase
+              .from('goals')
+              .select('*')
+              .eq('user_id', user.id)
+              .single();
+            if (goalsData) {
+              userGoals = {
+                current_situation: goalsData.current_situation,
+                one_year_goal: goalsData.one_year_goal,
+                two_year_goal: goalsData.two_year_goal,
+                target_amount: goalsData.target_amount,
+                ...parsedGoals,
+              };
+            }
+          }
+
+          // Run move engine: UKPF priority + goal-aware ranking + trajectories
+          const moveResult = findMostMaterialMove(
+            result.profile,
+            userGoals,
+            result.decisionStack || [],
+          );
+
+          // Build ranked moves with trajectory data
+          const rankedMoves = moveResult.allScored.map((s: any) => ({
+            ...s.move,
+            monthlySaving: s.monthlySaving,
+            goalRelevance: s.goalRelevance,
+            priorityAlignment: s.priorityAlignment,
+          }));
+
+          // Save analysis to Supabase with enriched move data
           if (user && result) {
             await supabase.from('analyses').insert({
               user_id: user.id,
@@ -68,17 +104,104 @@ export default function ProcessingScreen() {
               non_discretionary: result.profile?.budgetReality?.nonDiscretionary || {},
               discretionary: result.profile?.budgetReality?.discretionary || {},
               income_sources: result.profile?.incomeSources || [],
-              top_move: result.decisionStack?.[0] || {},
-              all_moves: result.decisionStack || [],
+              top_move: moveResult.topMove || result.decisionStack?.[0] || {},
+              all_moves: rankedMoves.length > 0 ? rankedMoves : result.decisionStack || [],
               behavioral_patterns: result.behavioralPatterns || [],
+              goal_context: {
+                goal: moveResult.goal,
+                ukpfPriority: moveResult.ukpfPriority,
+                currentTrajectory: moveResult.currentTrajectory,
+                newTrajectory: moveResult.newTrajectory,
+                monthsSaved: moveResult.monthsSaved,
+                monthlySaving: moveResult.monthlySaving,
+                insight: moveResult.insight,
+              },
             });
           }
 
           // Store result in memory for results screen
-          // We use a global since Expo Router params have size limits
           (globalThis as any).__bocyResult = result;
-          (globalThis as any).__bocyGoals = parsedGoals;
+          (globalThis as any).__bocyGoals = userGoals;
+          (globalThis as any).__bocyMoveResult = moveResult;
         }
+
+        // Step 4: Claude refinement — rewrite moves into outcome-focused language
+        if (i === 3 && (globalThis as any).__bocyMoveResult) {
+          try {
+            const mr = (globalThis as any).__bocyMoveResult;
+            const profile = (globalThis as any).__bocyResult?.profile;
+            const movesToRefine = mr.allScored?.slice(0, 3).map((s: any) => s.move) || [];
+            if (movesToRefine.length > 0 && profile) {
+              const apiUrl = process.env.EXPO_PUBLIC_API_URL || '';
+              const refinementPrompt = `You are BOCY, a financial decision engine. Rewrite these financial recommendations to be outcome-focused with specific amounts, timelines, and named merchants from the user's data.
+
+RULES:
+- Each action must start with a quantified outcome (e.g. "Free £94/mo by cancelling...")
+- Include specific merchant names and amounts from the data
+- Tie to user's goal where possible: "${mr.goal?.label || 'Improve finances'}"
+- UKPF priority: "${mr.ukpfPriority?.label || 'Optimise'}"
+- Keep each under 80 characters
+- Return ONLY a JSON array of strings, one per move. No explanation.
+
+User's financial data:
+- Monthly income: £${profile.monthly?.income || 0}
+- Monthly spending: £${profile.monthly?.spending || 0}
+- Surplus: £${profile.monthly?.surplus || 0}
+- Savings rate: ${profile.metrics?.savingsRate || 0}%
+
+Current moves to rewrite:
+${movesToRefine.map((m: any, idx: number) => `${idx + 1}. "${m.action}" (saves £${m.monthlySaving || Math.round((m.annualImpact || 0) / 12)}/mo, type: ${m.type}, details: ${JSON.stringify(m.details?.items?.slice(0, 3).map((it: any) => it.name + ' £' + it.amount) || [])})`).join('\n')}`;
+
+              const resp = await fetch(`${apiUrl}/api/claude/enrich`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt: refinementPrompt, max_tokens: 512 }),
+              });
+              if (resp.ok) {
+                const data = await resp.json();
+                if (data.text) {
+                  try {
+                    const jsonMatch = data.text.match(/\[[\s\S]*\]/);
+                    if (jsonMatch) {
+                      const refined = JSON.parse(jsonMatch[0]);
+                      // Update move actions with Claude-refined language
+                      const updatedMoves = [...(mr.allScored || [])];
+                      refined.forEach((action: string, idx: number) => {
+                        if (updatedMoves[idx] && typeof action === 'string' && action.length > 10) {
+                          updatedMoves[idx].move.action = action;
+                        }
+                      });
+                      // Update the stored move result and top move
+                      if (updatedMoves[0]) {
+                        mr.topMove = updatedMoves[0].move;
+                        mr.insight = mr.insight; // keep original trajectory insight
+                      }
+                      // Update Supabase with refined moves
+                      const { data: { user: u } } = await supabase.auth.getUser();
+                      if (u) {
+                        const refinedRanked = updatedMoves.map((s: any) => ({
+                          ...s.move,
+                          monthlySaving: s.monthlySaving,
+                          goalRelevance: s.goalRelevance,
+                          priorityAlignment: s.priorityAlignment,
+                        }));
+                        await supabase.from('analyses')
+                          .update({
+                            top_move: mr.topMove,
+                            all_moves: refinedRanked,
+                          })
+                          .eq('user_id', u.id)
+                          .order('created_at', { ascending: false })
+                          .limit(1);
+                      }
+                    }
+                  } catch { /* Claude response wasn't valid JSON — keep original moves */ }
+                }
+              }
+            }
+          } catch { /* Claude refinement failed — continue with original moves */ }
+        }
+
         await new Promise(r => setTimeout(r, STEPS[i].duration));
       }
 
@@ -93,7 +216,7 @@ export default function ProcessingScreen() {
   return (
     <SafeAreaView style={s.container}>
       <Animated.View style={[s.inner, { opacity: fadeAnim }]}>
-        <Text style={s.logo}>BOCY</Text>
+        <Text style={s.logo}>Analysing</Text>
 
         <View style={s.stepsWrap}>
           {STEPS.map((step, i) => (
@@ -103,7 +226,7 @@ export default function ProcessingScreen() {
                 i < currentStep && s.stepDotDone,
                 i === currentStep && s.stepDotActive,
               ]}>
-                {i < currentStep && <Text style={s.checkmark}>&#10003;</Text>}
+                {i < currentStep && <Ionicons name="checkmark" size={14} color={theme.colors.mint} />}
                 {i === currentStep && <View style={s.pulse} />}
               </View>
               <Text style={[
@@ -122,7 +245,7 @@ export default function ProcessingScreen() {
             <Text style={s.errorText}>{error}</Text>
           </View>
         ) : (
-          <Text style={s.hint}>This usually takes a few seconds</Text>
+          <Text style={s.hint}>This usually takes just a moment</Text>
         )}
       </Animated.View>
     </SafeAreaView>

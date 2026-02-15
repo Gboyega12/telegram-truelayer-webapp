@@ -7,25 +7,24 @@ import {
   SafeAreaView,
   ScrollView,
   Animated,
-  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../../theme';
-import { findMostMaterialMove } from '../../lib/move-engine';
+import { confirm } from '../../lib/confirm';
 
 export default function ResultsScreen() {
   const router = useRouter();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const [expandedCat, setExpandedCat] = useState<string | null>(null);
   const [showModify, setShowModify] = useState(false);
+  const [committed, setCommitted] = useState(false);
 
   const result = (globalThis as any).__bocyResult;
   const goals = (globalThis as any).__bocyGoals;
 
-  // Run move engine
-  const moveResult = result
-    ? findMostMaterialMove(result.profile, goals, result.decisionStack)
-    : null;
+  // Use cached move result from processing pipeline (already UKPF-ranked + Claude-refined)
+  const moveResult = (globalThis as any).__bocyMoveResult || null;
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -66,7 +65,6 @@ export default function ResultsScreen() {
         <Animated.View style={{ opacity: fadeAnim }}>
           {/* Header */}
           <View style={s.header}>
-            <Text style={s.logo}>BOCY</Text>
             <Text style={s.headerTitle}>Your Financial Picture</Text>
           </View>
 
@@ -133,7 +131,7 @@ export default function ResultsScreen() {
                     <Text style={[s.catAmount, { color: theme.colors.coral }]}>
                       {formatCurrency(item.monthly)}/mo
                     </Text>
-                    <Text style={s.expandArrow}>{isExpanded ? 'v' : '>'}</Text>
+                    <Ionicons name={isExpanded ? 'chevron-down' : 'chevron-forward'} size={14} color={theme.colors.muted} />
                   </TouchableOpacity>
                   {isExpanded && item.txs?.length > 0 && (
                     <View style={s.txList}>
@@ -167,7 +165,7 @@ export default function ResultsScreen() {
                     <Text style={[s.catAmount, { color: theme.colors.sky }]}>
                       {formatCurrency(item.monthly)}/mo
                     </Text>
-                    <Text style={s.expandArrow}>{isExpanded ? 'v' : '>'}</Text>
+                    <Ionicons name={isExpanded ? 'chevron-down' : 'chevron-forward'} size={14} color={theme.colors.muted} />
                   </TouchableOpacity>
                   {isExpanded && item.txs?.length > 0 && (
                     <View style={s.txList}>
@@ -191,7 +189,7 @@ export default function ResultsScreen() {
           {moveResult?.topMove && (
             <View style={s.moveCard}>
               <View style={s.moveHeader}>
-                <Text style={s.moveLabel}>YOUR #1 MOVE</Text>
+                <Text style={s.moveLabel}>TOP RECOMMENDATION</Text>
                 {moveResult.goal && (
                   <Text style={s.moveGoalTag}>{moveResult.goal.label}</Text>
                 )}
@@ -234,14 +232,14 @@ export default function ResultsScreen() {
               {moveResult.currentTrajectory && moveResult.newTrajectory && (
                 <View style={s.timelineBox}>
                   <View style={s.timelineRow}>
-                    <Text style={s.timelineDot}>o</Text>
+                    <Ionicons name="ellipse-outline" size={14} color={theme.colors.dim} style={{ width: 20, textAlign: 'center' }} />
                     <Text style={s.timelineLabel}>Without changes</Text>
                     <Text style={[s.timelineVal, { color: theme.colors.dim }]}>
                       {moveResult.currentTrajectory} months
                     </Text>
                   </View>
                   <View style={s.timelineRow}>
-                    <Text style={[s.timelineDot, { color: theme.colors.mint }]}>*</Text>
+                    <Ionicons name="checkmark-circle" size={14} color={theme.colors.mint} style={{ width: 20, textAlign: 'center' }} />
                     <Text style={s.timelineLabel}>With this move</Text>
                     <Text style={[s.timelineVal, { color: theme.colors.mint }]}>
                       {moveResult.newTrajectory} months
@@ -250,20 +248,19 @@ export default function ResultsScreen() {
                 </View>
               )}
 
-              {/* Approve / Modify buttons */}
+              {/* Commit / Modify buttons */}
               <View style={s.moveActions}>
                 <TouchableOpacity
-                  style={s.approveBtn}
-                  onPress={() =>
-                    Alert.alert(
-                      'Coming at launch',
-                      'When Bocy launches, you\'ll be able to approve moves and we\'ll set up automatic execution — transfers, payment adjustments, and reminders — all handled for you.',
-                      [{ text: 'Got it' }]
-                    )
-                  }
+                  style={[s.approveBtn, committed && { backgroundColor: 'rgba(114,232,176,0.15)', borderWidth: 1, borderColor: theme.colors.mint }]}
+                  onPress={() => {
+                    setCommitted(true);
+                    confirm("You're on it!", "We've noted this as a committed action. We'll track your progress in future analyses.", () => {});
+                  }}
                   activeOpacity={0.8}
+                  disabled={committed}
                 >
-                  <Text style={s.approveBtnText}>Approve</Text>
+                  <Ionicons name={committed ? 'checkmark-circle' : 'flash'} size={16} color={committed ? theme.colors.mint : theme.colors.bg} style={{ marginRight: 6 }} />
+                  <Text style={[s.approveBtnText, committed && { color: theme.colors.mint }]}>{committed ? 'Committed' : "I'll do this"}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={s.modifyBtn}
@@ -320,7 +317,7 @@ export default function ResultsScreen() {
           {/* Other Moves */}
           {moveResult && moveResult.allScored?.length > 1 && (
             <View style={s.card}>
-              <Text style={s.cardTitle}>Other Moves</Text>
+              <Text style={s.cardTitle}>More Recommendations</Text>
               {moveResult.allScored.slice(1).map((scored: any, i: number) => (
                 <View key={i} style={s.otherMoveRow}>
                   <View style={s.otherMoveInfo}>
@@ -350,7 +347,7 @@ export default function ResultsScreen() {
 
           {/* Personality Card (secondary insight) */}
           <View style={s.card}>
-            <Text style={s.cardTitle}>Your Money Personality</Text>
+            <Text style={s.cardTitle}>Your Financial Profile</Text>
             <View style={s.personalityHeader}>
               <Text style={s.personalityName}>{archetype?.name || 'Balanced Realist'}</Text>
               <View style={s.scoreCircle}>
@@ -386,6 +383,13 @@ export default function ResultsScreen() {
           {/* Action buttons */}
           <View style={s.bottomActions}>
             <TouchableOpacity
+              style={s.goHomeBtn}
+              onPress={() => router.replace('/(main)/(tabs)' as any)}
+              activeOpacity={0.8}
+            >
+              <Text style={s.goHomeBtnText}>Go to Home</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
               style={s.newAnalysisBtn}
               onPress={() => router.replace('/(main)/connect' as any)}
               activeOpacity={0.8}
@@ -411,13 +415,6 @@ const s = StyleSheet.create({
   },
   header: {
     marginBottom: 24,
-  },
-  logo: {
-    fontFamily: 'SpaceMono',
-    fontSize: 14,
-    color: theme.colors.accent,
-    letterSpacing: 4,
-    marginBottom: 8,
   },
   headerTitle: {
     fontSize: 26,
@@ -684,6 +681,8 @@ const s = StyleSheet.create({
     borderRadius: theme.radius.md,
     padding: 14,
     alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
   },
   approveBtnText: {
     fontFamily: 'SpaceMono',
@@ -930,6 +929,20 @@ const s = StyleSheet.create({
   // Bottom
   bottomActions: {
     marginTop: 8,
+    gap: 12,
+  },
+  goHomeBtn: {
+    backgroundColor: theme.colors.accent,
+    borderRadius: theme.radius.md,
+    padding: 16,
+    alignItems: 'center',
+  },
+  goHomeBtnText: {
+    fontFamily: 'SpaceMono',
+    fontSize: 14,
+    fontWeight: '700',
+    color: theme.colors.bg,
+    letterSpacing: 1,
   },
   newAnalysisBtn: {
     borderWidth: 1,

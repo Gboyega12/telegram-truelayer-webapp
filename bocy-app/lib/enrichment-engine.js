@@ -210,7 +210,7 @@ const discretionary={total:0,items:[]};
 for(const[cat,data]of Object.entries(byCat)){
 const monthly=mo(data.total);
 if(nonDiscretionaryCats.includes(cat)||(cat==='Subscriptions')){nonDiscretionary.total+=monthly;nonDiscretionary.items.push({category:cat,monthly,txs:data.txs||[]})}
-else if(cat!=='Other'&&cat!=='Transfers'&&cat!=='Savings'&&cat!=='Refund'){discretionary.total+=monthly;discretionary.items.push({category:cat,monthly,txs:data.txs||[]})}
+else if(cat!=='Transfers'&&cat!=='Savings'&&cat!=='Refund'){discretionary.total+=monthly;discretionary.items.push({category:cat,monthly,txs:data.txs||[]})}
 }
 // Add subscription + debt from recurring (more accurate than category totals)
 const subMo=Math.round(subTotal);const debtMo=Math.round(debtTotal);

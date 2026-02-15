@@ -5,13 +5,14 @@ import {
   TouchableOpacity,
   StyleSheet,
   SafeAreaView,
-  Alert,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as WebBrowser from 'expo-web-browser';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../../theme';
 import { getTrueLayerAuthUrl } from '../../lib/truelayer';
+import { confirm } from '../../lib/confirm';
 
 export default function ConnectScreen() {
   const [loading, setLoading] = useState(false);
@@ -36,11 +37,11 @@ export default function ConnectScreen() {
             params: { csvData: decodeURIComponent(csvData), source: 'bank' },
           });
         } else {
-          Alert.alert('Connection issue', 'Could not retrieve transaction data. Please try again.');
+          confirm('Connection issue', 'We couldn\'t retrieve your transaction data. Please try again.', () => {});
         }
       }
     } catch (error) {
-      Alert.alert('Error', 'Bank connection failed. Please try again.');
+      confirm('Something went wrong', 'The bank connection didn\'t go through. Please try again.', () => {});
     }
     setLoading(false);
   };
@@ -63,11 +64,11 @@ export default function ConnectScreen() {
             params: { csvData, source: 'csv' },
           });
         } else {
-          Alert.alert('Invalid file', 'The file appears to be empty or invalid.');
+          confirm('Hmm, that doesn\'t look right', 'The file appears to be empty or isn\'t a valid CSV. Please try another.', () => {});
         }
       }
     } catch (error) {
-      Alert.alert('Error', 'Could not read the file. Please try a CSV file.');
+      confirm('Something went wrong', 'We couldn\'t read that file. Please make sure it\'s a CSV export from your bank.', () => {});
     }
   };
 
@@ -76,11 +77,9 @@ export default function ConnectScreen() {
       <View style={s.inner}>
         {/* Header */}
         <View style={s.header}>
-          <Text style={s.logo}>BOCY</Text>
           <Text style={s.title}>Connect your bank</Text>
           <Text style={s.subtitle}>
-            We analyse your transactions to find your single most impactful financial move.
-            Your data never leaves your device.
+            We'll review your transactions to find personalised ways to improve your finances. Your data stays private and secure.
           </Text>
         </View>
 
@@ -93,11 +92,11 @@ export default function ConnectScreen() {
             activeOpacity={0.8}
           >
             <View style={s.btnIcon}>
-              <Text style={s.btnIconText}>&#9741;</Text>
+              <Ionicons name="lock-closed" size={20} color={theme.colors.accent} />
             </View>
             <View style={s.btnContent}>
               <Text style={s.primaryBtnTitle}>Connect via Open Banking</Text>
-              <Text style={s.primaryBtnSub}>Secure, read-only access. Powered by TrueLayer.</Text>
+              <Text style={s.primaryBtnSub}>Secure, read-only access via TrueLayer</Text>
             </View>
           </TouchableOpacity>
 
@@ -120,15 +119,15 @@ export default function ConnectScreen() {
         {/* Trust indicators */}
         <View style={s.trust}>
           <View style={s.trustItem}>
-            <Text style={s.trustIcon}>&#9399;</Text>
+            <Ionicons name="shield-checkmark" size={14} color={theme.colors.mint} />
             <Text style={s.trustText}>FCA regulated</Text>
           </View>
           <View style={s.trustItem}>
-            <Text style={s.trustIcon}>&#9399;</Text>
+            <Ionicons name="eye-outline" size={14} color={theme.colors.mint} />
             <Text style={s.trustText}>Read-only access</Text>
           </View>
           <View style={s.trustItem}>
-            <Text style={s.trustIcon}>&#9399;</Text>
+            <Ionicons name="phone-portrait-outline" size={14} color={theme.colors.mint} />
             <Text style={s.trustText}>Data stays on device</Text>
           </View>
         </View>
@@ -149,13 +148,6 @@ const s = StyleSheet.create({
   },
   header: {
     marginBottom: 40,
-  },
-  logo: {
-    fontFamily: 'SpaceMono',
-    fontSize: 18,
-    color: theme.colors.accent,
-    letterSpacing: 4,
-    marginBottom: 24,
   },
   title: {
     fontSize: 28,

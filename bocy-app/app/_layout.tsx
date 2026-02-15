@@ -40,7 +40,13 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     if (!session && !inAuth) {
       router.replace('/(auth)/sign-in' as any);
     } else if (session && inAuth) {
-      router.replace('/(main)/connect' as any);
+      // Check if user has set their name
+      const fullName = session.user?.user_metadata?.full_name;
+      if (!fullName) {
+        router.replace('/(main)/welcome' as any);
+      } else {
+        router.replace('/(main)/(tabs)' as any);
+      }
     }
   }, [session, loading, segments]);
 

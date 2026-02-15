@@ -7,12 +7,12 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import { theme } from '../../theme';
+import { confirm } from '../../lib/confirm';
 
 export default function SignIn() {
   const [email, setEmail] = useState('');
@@ -22,14 +22,14 @@ export default function SignIn() {
 
   const handleSignIn = async () => {
     if (!email || !password) {
-      Alert.alert('Missing fields', 'Please enter your email and password.');
+      confirm('Missing fields', 'Please enter your email and password.', () => {});
       return;
     }
     setLoading(true);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
     if (error) {
-      Alert.alert('Sign in failed', error.message);
+      confirm('Sign in failed', error.message, () => {});
     }
     // AuthGate in _layout handles navigation on success
   };
@@ -43,7 +43,7 @@ export default function SignIn() {
         {/* Logo */}
         <View style={s.logoWrap}>
           <Text style={s.logoText}>BOCY</Text>
-          <Text style={s.tagline}>Your AI financial strategist</Text>
+          <Text style={s.tagline}>Your personal financial advisor</Text>
         </View>
 
         {/* Form */}
