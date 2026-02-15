@@ -1,3 +1,5 @@
 {
+  "buildCommand": "cd bocy-app && npm install && npx expo export --platform web",
+  "outputDirectory": "bocy-app/dist",
   "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }]
 }
