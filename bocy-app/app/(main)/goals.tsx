@@ -1,360 +1,150 @@
 import { useState } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  SafeAreaView,
-  ScrollView,
-  TextInput,
-} from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import { theme } from '../../theme';
-import { supabase } from '../../lib/supabase';
+import { supabase } from '@/lib/supabase';
+import { colors, fonts, spacing, radius } from '@/theme';
 
-type GoalStep = 'current' | 'oneYear' | 'twoYear';
-
-const CURRENT_OPTIONS = [
-  { id: 'in_debt', label: 'I\'m in debt', desc: 'Paying off loans, credit cards, or buy-now-pay-later', icon: 'alert-circle-outline' },
-  { id: 'breaking_even', label: 'Breaking even', desc: 'My income covers expenses, but there\'s not much left', icon: 'swap-horizontal-outline' },
-  { id: 'saving_slowly', label: 'Saving, but slowly', desc: 'I have some surplus each month and want to do more', icon: 'trending-up-outline' },
-  { id: 'saving_well', label: 'Saving comfortably', desc: 'Consistent savings — looking to optimise further', icon: 'checkmark-circle-outline' },
-  { id: 'other', label: 'Something else', desc: 'Describe your situation in your own words', icon: 'create-outline', hasInput: true },
+const SITUATIONS = [
+  { key: 'in_debt', label: 'In debt' },
+  { key: 'breaking_even', label: 'Breaking even' },
+  { key: 'saving_slowly', label: 'Saving slowly' },
+  { key: 'saving_well', label: 'Saving well' },
+  { key: 'other', label: 'Other' },
 ];
 
-const ONE_YEAR_OPTIONS = [
-  { id: 'clear_debt', label: 'Clear my debt', desc: 'Become debt-free or make a significant dent' },
-  { id: 'emergency_fund', label: 'Build an emergency fund', desc: 'Save 3 to 6 months of essential expenses' },
-  { id: 'save_target', label: 'Save a specific amount', desc: 'Set a target and work towards it', hasAmount: true },
-  { id: 'reduce_spending', label: 'Spend less, keep more', desc: 'Cut waste without sacrificing quality of life' },
-  { id: 'other', label: 'Something else', desc: 'Tell us your goal in your own words', hasInput: true },
+const ONE_YEAR_GOALS = [
+  { key: 'clear_debt', label: 'Clear debt' },
+  { key: 'emergency_fund', label: 'Build emergency fund' },
+  { key: 'save_target', label: 'Hit a savings target' },
+  { key: 'reduce_spending', label: 'Reduce spending' },
+  { key: 'invest', label: 'Start investing' },
+  { key: 'other', label: 'Other' },
 ];
 
-const TWO_YEAR_OPTIONS = [
-  { id: 'buy_home', label: 'Buy a home', desc: 'Save towards a deposit' },
-  { id: 'invest', label: 'Start investing', desc: 'Build long-term wealth' },
-  { id: 'go_freelance', label: 'Go freelance or start a business', desc: 'Build a financial runway' },
-  { id: 'financial_freedom', label: 'Financial freedom', desc: 'Work towards passive income covering my expenses' },
-  { id: 'other', label: 'Something else', desc: 'Share your bigger-picture goal', hasInput: true },
+const TWO_YEAR_GOALS = [
+  { key: 'buy_home', label: 'Buy a home' },
+  { key: 'go_freelance', label: 'Go freelance' },
+  { key: 'financial_freedom', label: 'Financial freedom' },
+  { key: 'clear_debt', label: 'Clear all debt' },
+  { key: 'invest', label: 'Grow investments' },
+  { key: 'other', label: 'Other' },
 ];
 
-export default function GoalsScreen() {
-  const { csvData, source } = useLocalSearchParams<{ csvData: string; source: string }>();
-  const [step, setStep] = useState<GoalStep>('current');
-  const [current, setCurrent] = useState('');
+export default function Goals() {
+  const { csvData } = useLocalSearchParams<{ csvData: string }>();
+  const [step, setStep] = useState(0);
+  const [situation, setSituation] = useState('');
   const [oneYear, setOneYear] = useState('');
   const [twoYear, setTwoYear] = useState('');
+  const [otherText, setOtherText] = useState('');
   const [targetAmount, setTargetAmount] = useState('');
-  const [customCurrent, setCustomCurrent] = useState('');
-  const [customOneYear, setCustomOneYear] = useState('');
-  const [customTwoYear, setCustomTwoYear] = useState('');
+  const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  const handleNext = async () => {
-    if (step === 'current' && current) {
-      if (current === 'other' && !customCurrent.trim()) return;
-      setStep('oneYear');
-    } else if (step === 'oneYear' && oneYear) {
-      if (oneYear === 'other' && !customOneYear.trim()) return;
-      setStep('twoYear');
-    } else if (step === 'twoYear' && twoYear) {
-      if (twoYear === 'other' && !customTwoYear.trim()) return;
+  const handleSave = async () => {
+    setLoading(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setLoading(false); return Alert.alert('Error', 'Not signed in.'); }
 
-      const currentVal = current === 'other' ? `other:${customCurrent.trim()}` : current;
-      const oneYearVal = oneYear === 'other' ? `other:${customOneYear.trim()}` : oneYear;
-      const twoYearVal = twoYear === 'other' ? `other:${customTwoYear.trim()}` : twoYear;
+    const oneYearVal = oneYear === 'other' ? `other:${otherText}` : oneYear;
+    const twoYearVal = twoYear === 'other' ? `other:${otherText}` : twoYear;
+    const amount = targetAmount ? parseFloat(targetAmount) : null;
 
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        await supabase.from('goals').upsert({
-          user_id: user.id,
-          current_situation: currentVal,
-          one_year_goal: oneYearVal,
-          two_year_goal: twoYearVal,
-          target_amount: targetAmount ? parseInt(targetAmount) : null,
-        }, { onConflict: 'user_id' });
-      }
+    const { error } = await supabase.from('goals').upsert({
+      user_id: user.id,
+      current_situation: situation,
+      one_year_goal: oneYearVal,
+      two_year_goal: twoYearVal,
+      target_amount: amount,
+    }, { onConflict: 'user_id' });
 
-      router.push({
-        pathname: '/(main)/processing' as any,
-        params: {
-          csvData,
-          source,
-          goals: JSON.stringify({
-            current: currentVal,
-            oneYear: oneYearVal,
-            twoYear: twoYearVal,
-            targetAmount: targetAmount ? parseInt(targetAmount) : null,
-          }),
-        },
-      });
-    }
+    setLoading(false);
+    if (error) return Alert.alert('Error', error.message);
+    router.push({ pathname: '/(main)/processing', params: { csvData } });
   };
 
-  const handleBack = () => {
-    if (step === 'oneYear') setStep('current');
-    else if (step === 'twoYear') setStep('oneYear');
-  };
-
-  const stepNumber = step === 'current' ? 1 : step === 'oneYear' ? 2 : 3;
-  const selectedValue = step === 'current' ? current : step === 'oneYear' ? oneYear : twoYear;
-  const setSelected = step === 'current' ? setCurrent : step === 'oneYear' ? setOneYear : setTwoYear;
-  const customText = step === 'current' ? customCurrent : step === 'oneYear' ? customOneYear : customTwoYear;
-  const setCustomText = step === 'current' ? setCustomCurrent : step === 'oneYear' ? setCustomOneYear : setCustomTwoYear;
-
-  const options = step === 'current' ? CURRENT_OPTIONS : step === 'oneYear' ? ONE_YEAR_OPTIONS : TWO_YEAR_OPTIONS;
-
-  const canContinue = selectedValue && (
-    selectedValue !== 'other' || customText.trim().length > 0
+  const renderOption = (items: { key: string; label: string }[], selected: string, onSelect: (k: string) => void) => (
+    <View style={s.options}>
+      {items.map((item) => (
+        <TouchableOpacity
+          key={item.key}
+          style={[s.option, selected === item.key && s.optionActive]}
+          onPress={() => onSelect(item.key)}
+        >
+          <Text style={[s.optionText, selected === item.key && s.optionTextActive]}>{item.label}</Text>
+        </TouchableOpacity>
+      ))}
+    </View>
   );
 
-  const titles: Record<GoalStep, { title: string; subtitle: string }> = {
-    current: { title: 'Where are you right now?', subtitle: 'This helps us understand your starting point — no judgement here.' },
-    oneYear: { title: 'What matters most to you this year?', subtitle: 'Pick the goal that would make the biggest difference over the next 12 months.' },
-    twoYear: { title: 'And looking further ahead?', subtitle: 'Your longer-term ambition helps shape the strategy we build for you.' },
-  };
+  const steps = [
+    {
+      question: "What's your financial situation?",
+      content: renderOption(SITUATIONS, situation, setSituation),
+      canProceed: !!situation,
+    },
+    {
+      question: 'What do you want to achieve this year?',
+      content: (
+        <>
+          {renderOption(ONE_YEAR_GOALS, oneYear, setOneYear)}
+          {oneYear === 'other' && (
+            <TextInput style={s.input} placeholder="Describe your goal" placeholderTextColor={colors.dim} value={otherText} onChangeText={setOtherText} />
+          )}
+          {oneYear === 'save_target' && (
+            <TextInput style={s.input} placeholder="Target amount (e.g. 5000)" placeholderTextColor={colors.dim} value={targetAmount} onChangeText={setTargetAmount} keyboardType="numeric" />
+          )}
+        </>
+      ),
+      canProceed: !!oneYear,
+    },
+    {
+      question: 'And in two years?',
+      content: renderOption(TWO_YEAR_GOALS, twoYear, setTwoYear),
+      canProceed: !!twoYear,
+    },
+  ];
+
+  const current = steps[step];
 
   return (
-    <SafeAreaView style={s.container}>
-      <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
-        {/* Progress */}
-        <View style={s.progress}>
-          {[1, 2, 3].map(n => (
-            <View
-              key={n}
-              style={[s.progressDot, n <= stepNumber && s.progressDotActive]}
-            />
-          ))}
-        </View>
-
-        {step !== 'current' && (
-          <TouchableOpacity onPress={handleBack} style={s.backBtn}>
-            <Text style={s.backText}>Back</Text>
-          </TouchableOpacity>
-        )}
-
-        {/* Header */}
-        <View style={s.header}>
-          <Text style={s.stepLabel}>Step {stepNumber} of 3</Text>
-          <Text style={s.title}>{titles[step].title}</Text>
-          <Text style={s.subtitle}>{titles[step].subtitle}</Text>
-        </View>
-
-        {/* Options */}
-        <View style={s.options}>
-          {options.map(opt => (
-            <TouchableOpacity
-              key={opt.id}
-              style={[s.option, selectedValue === opt.id && s.optionSelected]}
-              onPress={() => setSelected(opt.id)}
-              activeOpacity={0.7}
-            >
-              <View style={s.optionHeader}>
-                {'icon' in opt && (
-                  <View style={[s.optionIcon, selectedValue === opt.id && s.optionIconSelected]}>
-                    <Ionicons
-                      name={(opt as any).icon}
-                      size={18}
-                      color={selectedValue === opt.id ? theme.colors.accent : theme.colors.muted}
-                    />
-                  </View>
-                )}
-                <View style={s.optionText}>
-                  <Text style={[s.optionLabel, selectedValue === opt.id && s.optionLabelSelected]}>
-                    {opt.label}
-                  </Text>
-                  <Text style={s.optionDesc}>{opt.desc}</Text>
-                </View>
-              </View>
-
-              {/* Amount input for save_target */}
-              {'hasAmount' in opt && (opt as any).hasAmount && selectedValue === opt.id && (
-                <TextInput
-                  style={s.amountInput}
-                  placeholder="e.g. 5000"
-                  placeholderTextColor={theme.colors.muted}
-                  value={targetAmount}
-                  onChangeText={setTargetAmount}
-                  keyboardType="number-pad"
-                  autoFocus
-                />
-              )}
-
-              {/* Free-text input for "other" */}
-              {'hasInput' in opt && (opt as any).hasInput && selectedValue === opt.id && (
-                <TextInput
-                  style={s.customInput}
-                  placeholder="Type here..."
-                  placeholderTextColor={theme.colors.muted}
-                  value={customText}
-                  onChangeText={setCustomText}
-                  multiline
-                  autoFocus
-                />
-              )}
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {/* Continue */}
-        {canContinue ? (
-          <TouchableOpacity style={s.continueBtn} onPress={handleNext} activeOpacity={0.8}>
-            <Text style={s.continueBtnText}>
-              {step === 'twoYear' ? 'Analyse my finances' : 'Continue'}
-            </Text>
-          </TouchableOpacity>
-        ) : null}
-      </ScrollView>
-    </SafeAreaView>
+    <ScrollView style={s.container} contentContainerStyle={s.scroll}>
+      <Text style={s.step}>Step {step + 1} of 3</Text>
+      <Text style={s.question}>{current.question}</Text>
+      {current.content}
+      <TouchableOpacity
+        style={[s.btn, !current.canProceed && s.btnDisabled]}
+        disabled={!current.canProceed || loading}
+        onPress={() => step < 2 ? setStep(step + 1) : handleSave()}
+      >
+        <Text style={s.btnText}>{step < 2 ? 'Next' : loading ? 'Saving...' : 'Start analysis'}</Text>
+      </TouchableOpacity>
+    </ScrollView>
   );
 }
 
 const s = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: theme.colors.bg,
-  },
-  scroll: {
-    paddingHorizontal: 24,
-    paddingTop: 20,
-    paddingBottom: 40,
-  },
-  progress: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 8,
-    marginBottom: 24,
-  },
-  progressDot: {
-    width: 32,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: theme.colors.border,
-  },
-  progressDotActive: {
-    backgroundColor: theme.colors.accent,
-  },
-  backBtn: {
-    marginBottom: 8,
-  },
-  backText: {
-    color: theme.colors.dim,
-    fontSize: 14,
-  },
-  header: {
-    marginBottom: 28,
-  },
-  stepLabel: {
-    fontFamily: 'SpaceMono',
-    fontSize: 11,
-    color: theme.colors.accent,
-    letterSpacing: 2,
-    textTransform: 'uppercase',
-    marginBottom: 12,
-  },
-  title: {
-    fontSize: 26,
-    fontWeight: '700',
-    color: theme.colors.text,
-    marginBottom: 8,
-    lineHeight: 34,
-  },
-  subtitle: {
-    fontSize: 15,
-    color: theme.colors.dim,
-    lineHeight: 22,
-  },
-  options: {
-    gap: 12,
-  },
+  container: { flex: 1, backgroundColor: colors.bg },
+  scroll: { paddingHorizontal: spacing.lg, paddingTop: 80, paddingBottom: 40 },
+  step: { fontFamily: fonts.mono, fontSize: 11, color: colors.dim, marginBottom: spacing.sm },
+  question: { fontFamily: fonts.mono, fontSize: 22, color: colors.text, marginBottom: spacing.lg },
+  options: { marginBottom: spacing.lg },
   option: {
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.radius.md,
-    padding: 18,
+    borderWidth: 1, borderColor: colors.border, borderRadius: radius.md,
+    paddingVertical: 14, paddingHorizontal: spacing.md, marginBottom: spacing.sm,
   },
-  optionSelected: {
-    borderColor: theme.colors.accent,
-    backgroundColor: 'rgba(232,200,114,0.06)',
+  optionActive: { borderColor: colors.accent, backgroundColor: colors.accentDim },
+  optionText: { fontFamily: fonts.mono, fontSize: 14, color: colors.text2 },
+  optionTextActive: { color: colors.accent },
+  input: {
+    fontFamily: fonts.mono, fontSize: 14, color: colors.text,
+    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
+    borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.sm,
   },
-  optionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
+  btn: {
+    backgroundColor: colors.accent, borderRadius: radius.md,
+    paddingVertical: 14, alignItems: 'center', marginTop: spacing.md,
   },
-  optionIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  optionIconSelected: {
-    backgroundColor: theme.colors.accentDim,
-  },
-  optionIconText: {
-    fontFamily: 'SpaceMono',
-    fontSize: 16,
-    color: theme.colors.muted,
-  },
-  optionIconTextSelected: {
-    color: theme.colors.accent,
-  },
-  optionText: {
-    flex: 1,
-  },
-  optionLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: theme.colors.text,
-    marginBottom: 3,
-  },
-  optionLabelSelected: {
-    color: theme.colors.accent,
-  },
-  optionDesc: {
-    fontSize: 13,
-    color: theme.colors.dim,
-  },
-  amountInput: {
-    marginTop: 12,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderWidth: 1,
-    borderColor: theme.colors.accentDim,
-    borderRadius: theme.radius.sm,
-    padding: 12,
-    color: theme.colors.text,
-    fontSize: 18,
-    fontFamily: 'SpaceMono',
-    textAlign: 'center',
-  },
-  customInput: {
-    marginTop: 12,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderWidth: 1,
-    borderColor: theme.colors.accentDim,
-    borderRadius: theme.radius.sm,
-    padding: 14,
-    color: theme.colors.text,
-    fontSize: 15,
-    lineHeight: 22,
-    minHeight: 80,
-    textAlignVertical: 'top',
-  },
-  continueBtn: {
-    backgroundColor: theme.colors.accent,
-    borderRadius: theme.radius.md,
-    padding: 18,
-    alignItems: 'center',
-    marginTop: 28,
-  },
-  continueBtnText: {
-    fontFamily: 'SpaceMono',
-    fontSize: 14,
-    fontWeight: '700',
-    color: theme.colors.bg,
-    letterSpacing: 1,
-  },
+  btnDisabled: { opacity: 0.4 },
+  btnText: { fontFamily: fonts.mono, fontSize: 15, color: colors.bg, fontWeight: '700' },
 });

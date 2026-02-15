@@ -1,396 +1,114 @@
-import { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  SafeAreaView,
-  ScrollView,
-  Linking,
-} from 'react-native';
-import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import { theme } from '../../../theme';
-import { supabase } from '../../../lib/supabase';
-import { confirm } from '../../../lib/confirm';
+import { useEffect, useState } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Linking } from 'react-native';
+import { supabase } from '@/lib/supabase';
+import { colors, fonts, spacing, radius } from '@/theme';
 
-const GOAL_LABELS: Record<string, string> = {
-  in_debt: 'In debt',
-  breaking_even: 'Breaking even',
-  saving_slowly: 'Saving, but slowly',
-  saving_well: 'Saving comfortably',
-  clear_debt: 'Clear my debt',
-  emergency_fund: 'Build an emergency fund',
-  save_target: 'Save a specific amount',
-  reduce_spending: 'Spend less, keep more',
-  buy_home: 'Buy a home',
-  invest: 'Start investing',
-  go_freelance: 'Go freelance or start a business',
-  financial_freedom: 'Financial freedom',
-};
-
-const getGoalLabel = (id: string) => {
-  if (id?.startsWith('other:')) return id.slice(6);
-  return GOAL_LABELS[id] || id;
-};
-
-/* ── skeleton placeholder ── */
-function Skeleton({ width, height, style }: { width: number | string; height: number; style?: any }) {
-  return (
-    <View
-      style={[
-        {
-          width: width as any,
-          height,
-          backgroundColor: 'rgba(255,255,255,0.06)',
-          borderRadius: 8,
-        },
-        style,
-      ]}
-    />
-  );
-}
-
-function PlanSkeleton() {
-  return (
-    <View style={{ gap: 16, paddingTop: 8 }}>
-      <Skeleton width="40%" height={26} />
-      <View style={[s.card, { gap: 14 }]}>
-        <Skeleton width="35%" height={12} />
-        {[1, 2, 3].map(i => (
-          <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-            <Skeleton width={28} height={28} style={{ borderRadius: 14 }} />
-            <View style={{ flex: 1, gap: 6 }}>
-              <Skeleton width="80%" height={16} />
-              <Skeleton width="40%" height={12} />
-            </View>
-          </View>
-        ))}
-      </View>
-    </View>
-  );
-}
-
-export default function PlanScreen() {
-  const router = useRouter();
-  const [loading, setLoading] = useState(true);
-  const [goals, setGoals] = useState<any>(null);
+export default function Plan() {
   const [analysis, setAnalysis] = useState<any>(null);
-  const [expandedMove, setExpandedMove] = useState<number | null>(null);
-  const [userName, setUserName] = useState('');
-  const [committed, setCommitted] = useState<Record<number, boolean>>({});
+  const [goals, setGoals] = useState<any>(null);
+  const [expanded, setExpanded] = useState<number | null>(null);
 
   useEffect(() => {
-    loadPlan();
-  }, []);
-
-  const loadPlan = async () => {
-    try {
+    (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
+      const { data: a } = await supabase
+        .from('analyses').select('*').eq('user_id', user.id)
+        .order('created_at', { ascending: false }).limit(1).single();
+      setAnalysis(a);
+      const { data: g } = await supabase.from('goals').select('*').eq('user_id', user.id).single();
+      setGoals(g);
+    })();
+  }, []);
 
-      setUserName(user.user_metadata?.full_name || '');
-
-      const [goalsRes, analysisRes] = await Promise.all([
-        supabase.from('goals').select('*').eq('user_id', user.id).single(),
-        supabase.from('analyses').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).limit(1),
-      ]);
-
-      if (goalsRes.data) setGoals(goalsRes.data);
-      if (analysisRes.data && analysisRes.data.length > 0) setAnalysis(analysisRes.data[0]);
-    } catch (err) {
-      console.error('Failed to load plan:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const formatCurrency = (n: number) => {
-    if (Math.abs(n) >= 1000) return `\u00A3${(n / 1000).toFixed(1)}k`;
-    return `\u00A3${Math.round(Math.abs(n))}`;
-  };
-
-  const handleCommitMove = (index: number) => {
-    setCommitted(prev => ({ ...prev, [index]: true }));
-    confirm(
-      "You're on it!",
-      "We've noted this action. We'll check your progress in your next analysis.",
-      () => {},
-    );
-  };
-
-  const isInDebt = goals?.current_situation === 'in_debt' || goals?.one_year_goal === 'clear_debt';
-  const surplus = analysis?.surplus || 0;
-  const allMoves: any[] = analysis?.all_moves || [];
-
-  // Build email body for debt help
-  const buildDebtEmailBody = (recipient: string) => {
-    const income = analysis?.monthly_income || 0;
-    const spending = analysis?.monthly_spending || 0;
-    const name = userName || 'A Bocy user';
-
-    return `Dear ${recipient},
-
-I am writing to seek advice regarding my current financial situation.
-
-Here is a summary of my finances:
-- Monthly income: \u00A3${income.toFixed(2)}
-- Monthly expenses: \u00A3${spending.toFixed(2)}
-- Monthly surplus/deficit: \u00A3${surplus.toFixed(2)}
-- Current situation: ${getGoalLabel(goals?.current_situation || 'in_debt')}
-- My goal: ${getGoalLabel(goals?.one_year_goal || '')}
-
-I would appreciate any guidance on how to manage my situation and work towards becoming debt-free.
-
-Thank you for your time.
-
-Kind regards,
-${name}`;
-  };
-
-  const handleDebtHelp = (type: 'stepchange' | 'citizens_advice' | 'credit_card') => {
-    switch (type) {
-      case 'stepchange':
-        Linking.openURL('https://www.stepchange.org/start.aspx');
-        break;
-      case 'citizens_advice':
-        Linking.openURL('https://www.citizensadvice.org.uk/debt-and-money/');
-        break;
-      case 'credit_card': {
-        const body = encodeURIComponent(buildDebtEmailBody('the team'));
-        const subject = encodeURIComponent('Hardship Period Application');
-        Linking.openURL(`mailto:?subject=${subject}&body=${body}`);
-        break;
-      }
-    }
-  };
-
-  if (loading) {
+  if (!analysis) {
     return (
-      <SafeAreaView style={s.container}>
-        <ScrollView contentContainerStyle={s.scroll}>
-          <PlanSkeleton />
-        </ScrollView>
-      </SafeAreaView>
+      <View style={s.container}>
+        <Text style={s.empty}>Run an analysis to see your plan.</Text>
+      </View>
     );
   }
 
+  const moves = analysis.all_moves || [];
+  const surplus = analysis.surplus;
+
   return (
-    <SafeAreaView style={s.container}>
-      <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
-        <Text style={s.pageTitle}>Your Plan</Text>
+    <ScrollView style={s.container} contentContainerStyle={s.scroll}>
+      <Text style={s.title}>Your action plan</Text>
+      {goals && (
+        <Text style={s.goalsText}>
+          Situation: {goals.current_situation} | Goal: {goals.one_year_goal}
+          {goals.target_amount ? ` (\u00A3${goals.target_amount})` : ''}
+        </Text>
+      )}
+      <Text style={s.surplus}>
+        Monthly surplus: <Text style={{ color: surplus >= 0 ? colors.mint : colors.coral }}>\u00A3{Math.round(surplus)}</Text>
+      </Text>
 
-        {/* Action plan for each move */}
-        {allMoves.length > 0 ? (
-          <View style={s.card}>
-            <Text style={s.cardTitle}>Action Plan</Text>
-
-            {allMoves.slice(0, 4).map((move: any, i: number) => {
-              const isExpanded = expandedMove === i;
-              return (
-                <View key={i} style={s.planItem}>
-                  <TouchableOpacity
-                    style={s.planItemHeader}
-                    onPress={() => setExpandedMove(isExpanded ? null : i)}
-                    activeOpacity={0.7}
-                  >
-                    <View style={s.planBadge}>
-                      <Text style={s.planBadgeText}>{i + 1}</Text>
-                    </View>
-                    <View style={s.planItemInfo}>
-                      <Text style={s.planItemAction}>{move.action}</Text>
-                      {move.annualImpact > 0 && (
-                        <Text style={s.planItemImpact}>{formatCurrency(move.annualImpact)}/yr impact</Text>
-                      )}
-                    </View>
-                    <Ionicons
-                      name={isExpanded ? 'chevron-down' : 'chevron-forward'}
-                      size={16}
-                      color={theme.colors.muted}
-                    />
-                  </TouchableOpacity>
-
-                  {isExpanded && (
-                    <View style={s.planDetail}>
-                      {move.details?.strategy && (
-                        <Text style={s.planStrategy}>{move.details.strategy}</Text>
-                      )}
-                      {move.details?.reasoning && (
-                        <Text style={s.planReasoning}>{move.details.reasoning}</Text>
-                      )}
-
-                      {move.details?.steps?.length > 0 && (
-                        <View style={s.planSteps}>
-                          {move.details.steps.map((step: string, j: number) => (
-                            <View key={j} style={s.planStepRow}>
-                              <Text style={s.planStepNum}>{j + 1}</Text>
-                              <Text style={s.planStepText}>{step}</Text>
-                            </View>
-                          ))}
-                        </View>
-                      )}
-
-                      {move.details?.effect && (
-                        <View style={s.planEffectBox}>
-                          <Text style={s.planEffectLabel}>Expected outcome</Text>
-                          <Text style={s.planEffectText}>{move.details.effect}</Text>
-                        </View>
-                      )}
-
-                      {/* Commit / Close */}
-                      <View style={s.planActions}>
-                        <TouchableOpacity
-                          style={[s.commitBtn, committed[i] && s.committedBtn]}
-                          onPress={() => handleCommitMove(i)}
-                          activeOpacity={0.8}
-                          disabled={!!committed[i]}
-                        >
-                          <Ionicons
-                            name={committed[i] ? 'checkmark-circle' : 'flash'}
-                            size={15}
-                            color={committed[i] ? theme.colors.mint : theme.colors.bg}
-                            style={{ marginRight: 4 }}
-                          />
-                          <Text style={[s.commitBtnText, committed[i] && s.committedBtnText]}>
-                            {committed[i] ? 'Committed' : "I'll do this"}
-                          </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={s.cancelBtn}
-                          onPress={() => setExpandedMove(null)}
-                          activeOpacity={0.8}
-                        >
-                          <Text style={s.cancelBtnText}>Close</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  )}
-                </View>
-              );
-            })}
-          </View>
-        ) : !analysis ? (
-          <View style={s.emptyWrap}>
-            <Text style={s.emptyText}>Run your first analysis to see a personalised plan.</Text>
-            <TouchableOpacity
-              style={s.startBtn}
-              onPress={() => router.push('/(main)/connect' as any)}
-              activeOpacity={0.8}
-            >
-              <Text style={s.startBtnText}>Start analysis</Text>
-            </TouchableOpacity>
-          </View>
-        ) : null}
-
-        {/* Debt help section */}
-        {isInDebt && analysis && (
-          <View style={s.debtCard}>
-            <Text style={s.debtTitle}>Need help with debt?</Text>
-            <Text style={s.debtSubtext}>
-              {surplus > 0
-                ? `You have \u00A3${Math.round(surplus)} surplus each month that could go towards paying down debt.`
-                : 'Your expenses currently exceed your income. Free, confidential help is available.'
-              }
-            </Text>
-
-            {surplus <= 0 && (
-              <>
-                <TouchableOpacity
-                  style={s.debtHelpBtn}
-                  onPress={() => handleDebtHelp('stepchange')}
-                  activeOpacity={0.8}
-                >
-                  <Ionicons name="heart-circle-outline" size={20} color={theme.colors.text} style={{ marginRight: 10 }} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.debtHelpBtnText}>StepChange</Text>
-                    <Text style={s.debtHelpBtnSub}>Free debt advice charity — stepchange.org</Text>
-                  </View>
-                  <Ionicons name="open-outline" size={16} color={theme.colors.muted} />
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={s.debtHelpBtn}
-                  onPress={() => handleDebtHelp('citizens_advice')}
-                  activeOpacity={0.8}
-                >
-                  <Ionicons name="people-circle-outline" size={20} color={theme.colors.text} style={{ marginRight: 10 }} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.debtHelpBtnText}>Citizens Advice</Text>
-                    <Text style={s.debtHelpBtnSub}>Free, independent guidance — citizensadvice.org.uk</Text>
-                  </View>
-                  <Ionicons name="open-outline" size={16} color={theme.colors.muted} />
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={s.debtHelpBtn}
-                  onPress={() => handleDebtHelp('credit_card')}
-                  activeOpacity={0.8}
-                >
-                  <Ionicons name="mail-outline" size={20} color={theme.colors.text} style={{ marginRight: 10 }} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.debtHelpBtnText}>Apply for hardship period</Text>
-                    <Text style={s.debtHelpBtnSub}>Draft an email to your lender</Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={16} color={theme.colors.muted} />
-                </TouchableOpacity>
-              </>
+      {/* Moves */}
+      {moves.map((move: any, i: number) => {
+        const isExpanded = expanded === i;
+        return (
+          <TouchableOpacity key={i} style={s.card} onPress={() => setExpanded(isExpanded ? null : i)} activeOpacity={0.8}>
+            <View style={s.moveHeader}>
+              <Text style={s.moveNum}>{i + 1}</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={s.moveAction}>{move.action}</Text>
+                <Text style={s.moveImpact}>\u00A3{move.monthlySaving}/month | \u00A3{move.annualImpact}/year</Text>
+              </View>
+              <View style={[s.effortBadge, { backgroundColor: move.effort === 'low' ? colors.mintDim : move.effort === 'high' ? colors.coralDim : colors.skyDim }]}>
+                <Text style={[s.effortText, { color: move.effort === 'low' ? colors.mint : move.effort === 'high' ? colors.coral : colors.sky }]}>{move.effort}</Text>
+              </View>
+            </View>
+            {isExpanded && move.details && (
+              <View style={s.details}>
+                {move.details.strategy && <Text style={s.detailText}>{move.details.strategy}</Text>}
+                {move.details.steps && move.details.steps.map((step: string, j: number) => (
+                  <Text key={j} style={s.step}>{'\u2022'} {step}</Text>
+                ))}
+                {move.details.effect && <Text style={s.effect}>{move.details.effect}</Text>}
+              </View>
             )}
-          </View>
-        )}
-      </ScrollView>
-    </SafeAreaView>
+          </TouchableOpacity>
+        );
+      })}
+
+      {/* Debt help */}
+      <Text style={s.section}>Need debt help?</Text>
+      <View style={s.card}>
+        <Text style={s.debtIntro}>Free, confidential UK debt advice:</Text>
+        <TouchableOpacity onPress={() => Linking.openURL('https://www.stepchange.org/start.aspx')}>
+          <Text style={s.link}>StepChange</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => Linking.openURL('https://www.citizensadvice.org.uk/debt-and-money/')}>
+          <Text style={s.link}>Citizens Advice</Text>
+        </TouchableOpacity>
+        <Text style={s.debtHint}>You can also email your credit card provider to request a hardship period.</Text>
+      </View>
+    </ScrollView>
   );
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.colors.bg },
-  scroll: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 80 },
-
-  pageTitle: { fontSize: 26, fontWeight: '700', color: theme.colors.text, marginBottom: 24 },
-
-  card: { backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border, borderRadius: theme.radius.lg, padding: 20, marginBottom: 16 },
-  cardTitle: { fontFamily: 'SpaceMono', fontSize: 11, color: theme.colors.accent, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 16 },
-
-  // Plan items
-  planItem: { borderBottomWidth: 1, borderBottomColor: theme.colors.border },
-  planItemHeader: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, gap: 12 },
-  planBadge: { width: 28, height: 28, borderRadius: 14, backgroundColor: theme.colors.accentDim, justifyContent: 'center', alignItems: 'center' },
-  planBadgeText: { fontFamily: 'SpaceMono', fontSize: 12, fontWeight: '700', color: theme.colors.accent },
-  planItemInfo: { flex: 1 },
-  planItemAction: { fontSize: 15, color: theme.colors.text, fontWeight: '500', lineHeight: 22 },
-  planItemImpact: { fontSize: 12, color: theme.colors.mint, fontFamily: 'SpaceMono', marginTop: 2 },
-
-  // Plan detail
-  planDetail: { paddingLeft: 40, paddingBottom: 16 },
-  planStrategy: { fontSize: 15, fontWeight: '600', color: theme.colors.text, marginBottom: 8 },
-  planReasoning: { fontSize: 14, color: theme.colors.text2, lineHeight: 21, marginBottom: 12 },
-  planSteps: { marginBottom: 12 },
-  planStepRow: { flexDirection: 'row', gap: 10, paddingVertical: 4 },
-  planStepNum: { fontSize: 13, color: theme.colors.accent, fontFamily: 'SpaceMono', width: 20, textAlign: 'center' },
-  planStepText: { flex: 1, fontSize: 14, color: theme.colors.text2, lineHeight: 20 },
-  planEffectBox: { backgroundColor: 'rgba(114,232,176,0.06)', borderRadius: theme.radius.sm, padding: 14, borderLeftWidth: 3, borderLeftColor: theme.colors.mint, marginBottom: 14 },
-  planEffectLabel: { fontSize: 11, fontWeight: '600', color: theme.colors.mint, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 4 },
-  planEffectText: { fontSize: 14, color: theme.colors.text2, lineHeight: 20 },
-
-  planActions: { flexDirection: 'row', gap: 12 },
-  commitBtn: { flex: 1, backgroundColor: theme.colors.accent, borderRadius: theme.radius.md, padding: 12, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' },
-  commitBtnText: { fontFamily: 'SpaceMono', fontSize: 12, fontWeight: '700', color: theme.colors.bg, letterSpacing: 1 },
-  committedBtn: { backgroundColor: theme.colors.mintDim, borderWidth: 1, borderColor: theme.colors.mint },
-  committedBtnText: { color: theme.colors.mint },
-  cancelBtn: { flex: 1, borderWidth: 1, borderColor: theme.colors.border, borderRadius: theme.radius.md, padding: 12, alignItems: 'center' },
-  cancelBtnText: { fontFamily: 'SpaceMono', fontSize: 12, fontWeight: '600', color: theme.colors.dim, letterSpacing: 1 },
-
-  // Empty
-  emptyWrap: { paddingVertical: 40, alignItems: 'center' },
-  emptyText: { fontSize: 14, color: theme.colors.dim, textAlign: 'center', marginBottom: 20 },
-  startBtn: { backgroundColor: theme.colors.accent, borderRadius: theme.radius.md, paddingHorizontal: 28, paddingVertical: 14 },
-  startBtnText: { fontFamily: 'SpaceMono', fontSize: 14, fontWeight: '700', color: theme.colors.bg },
-
-  // Debt help
-  debtCard: { backgroundColor: 'rgba(232,114,114,0.06)', borderWidth: 1, borderColor: theme.colors.coralDim, borderRadius: theme.radius.lg, padding: 20, marginBottom: 16 },
-  debtTitle: { fontSize: 18, fontWeight: '700', color: theme.colors.text, marginBottom: 8 },
-  debtSubtext: { fontSize: 14, color: theme.colors.text2, lineHeight: 21, marginBottom: 16 },
-  debtHelpBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border, borderRadius: theme.radius.md, padding: 16, marginBottom: 10 },
-  debtHelpBtnText: { fontSize: 15, fontWeight: '600', color: theme.colors.text },
-  debtHelpBtnSub: { fontSize: 12, color: theme.colors.dim, marginTop: 2 },
+  container: { flex: 1, backgroundColor: colors.bg },
+  scroll: { paddingHorizontal: spacing.md, paddingTop: 60, paddingBottom: 40 },
+  empty: { fontFamily: fonts.mono, fontSize: 14, color: colors.dim, textAlign: 'center', marginTop: 100 },
+  title: { fontFamily: fonts.mono, fontSize: 22, color: colors.text, marginBottom: spacing.xs },
+  goalsText: { fontFamily: fonts.mono, fontSize: 11, color: colors.dim, marginBottom: spacing.xs },
+  surplus: { fontFamily: fonts.mono, fontSize: 13, color: colors.text2, marginBottom: spacing.lg },
+  card: { backgroundColor: colors.card, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.sm },
+  moveHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
+  moveNum: { fontFamily: fonts.mono, fontSize: 16, color: colors.accent, fontWeight: '700', width: 24 },
+  moveAction: { fontFamily: fonts.mono, fontSize: 14, color: colors.text, marginBottom: 4 },
+  moveImpact: { fontFamily: fonts.mono, fontSize: 12, color: colors.mint },
+  effortBadge: { borderRadius: radius.sm, paddingHorizontal: 8, paddingVertical: 2 },
+  effortText: { fontFamily: fonts.mono, fontSize: 10, fontWeight: '600' },
+  details: { marginTop: spacing.sm, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border },
+  detailText: { fontFamily: fonts.mono, fontSize: 12, color: colors.text2, marginBottom: spacing.sm, lineHeight: 18 },
+  step: { fontFamily: fonts.mono, fontSize: 12, color: colors.dim, marginBottom: 4, paddingLeft: spacing.sm },
+  effect: { fontFamily: fonts.mono, fontSize: 12, color: colors.accent, marginTop: spacing.sm, fontStyle: 'italic' },
+  section: { fontFamily: fonts.mono, fontSize: 14, color: colors.text, marginTop: spacing.lg, marginBottom: spacing.sm },
+  debtIntro: { fontFamily: fonts.mono, fontSize: 12, color: colors.text2, marginBottom: spacing.sm },
+  link: { fontFamily: fonts.mono, fontSize: 13, color: colors.sky, marginBottom: spacing.xs, textDecorationLine: 'underline' },
+  debtHint: { fontFamily: fonts.mono, fontSize: 11, color: colors.dim, marginTop: spacing.sm },
 });

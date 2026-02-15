@@ -1,52 +1,40 @@
 import { createClient } from '@supabase/supabase-js';
-import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
+let SecureStore: typeof import('expo-secure-store') | null = null;
+if (Platform.OS !== 'web') {
+  SecureStore = require('expo-secure-store');
+}
 
-// Secure token storage for native, localStorage for web
-const isWeb = Platform.OS === 'web' && typeof localStorage !== 'undefined';
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
+const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
 
-const ExpoSecureStoreAdapter = {
-  getItem: (key: string) => {
-    if (isWeb) {
-      return localStorage.getItem(key);
-    }
-    if (Platform.OS !== 'web') {
-      return SecureStore.getItemAsync(key);
-    }
-    return null;
+const storage = {
+  getItem: async (key: string) => {
+    if (Platform.OS === 'web') return localStorage.getItem(key);
+    return SecureStore?.getItemAsync(key) ?? null;
   },
-  setItem: (key: string, value: string) => {
-    if (isWeb) {
+  setItem: async (key: string, value: string) => {
+    if (Platform.OS === 'web') {
       localStorage.setItem(key, value);
-      return;
-    }
-    if (Platform.OS !== 'web') {
-      return SecureStore.setItemAsync(key, value);
+    } else {
+      await SecureStore?.setItemAsync(key, value);
     }
   },
-  removeItem: (key: string) => {
-    if (isWeb) {
+  removeItem: async (key: string) => {
+    if (Platform.OS === 'web') {
       localStorage.removeItem(key);
-      return;
-    }
-    if (Platform.OS !== 'web') {
-      return SecureStore.deleteItemAsync(key);
+    } else {
+      await SecureStore?.deleteItemAsync(key);
     }
   },
 };
 
-export const supabase = createClient(
-  supabaseUrl || 'https://placeholder.supabase.co',
-  supabaseAnonKey || 'placeholder',
-  {
-    auth: {
-      storage: ExpoSecureStoreAdapter as any,
-      autoRefreshToken: true,
-      persistSession: true,
-      detectSessionInUrl: false,
-    },
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    storage,
+    autoRefreshToken: true,
+    persistSession: true,
+    detectSessionInUrl: false,
   },
-);
+});

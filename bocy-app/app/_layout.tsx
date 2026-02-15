@@ -1,96 +1,57 @@
 import { useEffect, useState } from 'react';
-import { Stack } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import { View, ActivityIndicator } from 'react-native';
 import { useFonts } from 'expo-font';
+import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { supabase } from '../lib/supabase';
+import { StatusBar } from 'expo-status-bar';
 import { Session } from '@supabase/supabase-js';
-import { useRouter, useSegments } from 'expo-router';
-import { theme } from '../theme';
-
-export { ErrorBoundary } from 'expo-router';
+import { supabase } from '@/lib/supabase';
 
 SplashScreen.preventAutoHideAsync();
 
 function AuthGate({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(true);
-  const segments = useSegments();
+  const [ready, setReady] = useState(false);
   const router = useRouter();
+  const segments = useSegments();
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setLoading(false);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, sess) => {
+      setSession(sess);
+      setReady(true);
     });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-    });
-
     return () => subscription.unsubscribe();
   }, []);
 
   useEffect(() => {
-    if (loading) return;
-
+    if (!ready) return;
     const inAuth = segments[0] === '(auth)';
 
     if (!session && !inAuth) {
-      router.replace('/(auth)/sign-in' as any);
+      router.replace('/(auth)/sign-in');
     } else if (session && inAuth) {
-      // Check if user has set their name
-      const fullName = session.user?.user_metadata?.full_name;
-      if (!fullName) {
-        router.replace('/(main)/welcome' as any);
-      } else {
-        router.replace('/(main)/(tabs)' as any);
-      }
+      const name = session.user.user_metadata?.full_name;
+      router.replace(name ? '/(main)/(tabs)' : '/(main)/welcome');
     }
-  }, [session, loading, segments]);
-
-  if (loading) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.colors.bg }}>
-        <ActivityIndicator size="large" color={theme.colors.accent} />
-      </View>
-    );
-  }
+  }, [session, ready, segments]);
 
   return <>{children}</>;
 }
 
 export default function RootLayout() {
-  const [loaded, error] = useFonts({
+  const [fontsLoaded] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
 
   useEffect(() => {
-    if (error) throw error;
-  }, [error]);
+    if (fontsLoaded) SplashScreen.hideAsync();
+  }, [fontsLoaded]);
 
-  useEffect(() => {
-    if (loaded) {
-      SplashScreen.hideAsync();
-    }
-  }, [loaded]);
-
-  if (!loaded) return null;
+  if (!fontsLoaded) return null;
 
   return (
     <AuthGate>
+      <Stack screenOptions={{ headerShown: false }} />
       <StatusBar style="light" />
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: theme.colors.bg },
-          animation: 'fade',
-        }}
-      >
-        <Stack.Screen name="(auth)" />
-        <Stack.Screen name="(main)" />
-      </Stack>
     </AuthGate>
   );
 }

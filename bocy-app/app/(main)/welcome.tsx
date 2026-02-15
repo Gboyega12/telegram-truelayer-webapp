@@ -1,305 +1,92 @@
 import { useState } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  SafeAreaView,
-  ScrollView,
-  KeyboardAvoidingView,
-  Platform,
-  ActivityIndicator,
-} from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import { theme } from '../../theme';
-import { supabase } from '../../lib/supabase';
-import { confirm } from '../../lib/confirm';
+import { supabase } from '@/lib/supabase';
+import { colors, fonts, spacing, radius } from '@/theme';
 
-const VALUE_POINTS = [
-  {
-    icon: 'lock-closed-outline' as const,
-    title: 'Connect your bank',
-    desc: 'Securely link your account or upload a statement. Your data stays private.',
-  },
-  {
-    icon: 'analytics-outline' as const,
-    title: 'We analyse your spending',
-    desc: 'Our engine reviews your transactions, spots patterns, and understands your habits.',
-  },
-  {
-    icon: 'flash-outline' as const,
-    title: 'Get personalised recommendations',
-    desc: 'Receive clear, actionable steps tailored to your goals — not generic advice.',
-  },
-];
-
-export default function WelcomeScreen() {
-  const [step, setStep] = useState<'intro' | 'name'>('intro');
+export default function Welcome() {
+  const [step, setStep] = useState(0);
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
-  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(false);
   const router = useRouter();
 
   const handleSaveName = async () => {
-    const trimmedFirst = firstName.trim();
-    const trimmedLast = lastName.trim();
-
-    if (!trimmedFirst) {
-      confirm('What should we call you?', 'Please enter your first name.', () => {});
-      return;
-    }
-
-    setSaving(true);
-    const fullName = trimmedLast
-      ? `${trimmedFirst} ${trimmedLast}`
-      : trimmedFirst;
-
-    const { error } = await supabase.auth.updateUser({
-      data: { full_name: fullName },
-    });
-    setSaving(false);
-
-    if (error) {
-      confirm('Something went wrong', error.message, () => {});
-    } else {
-      router.replace('/(main)/connect' as any);
-    }
+    const name = `${firstName.trim()} ${lastName.trim()}`.trim();
+    if (!name) return Alert.alert('Error', 'Please enter your name.');
+    setLoading(true);
+    const { error } = await supabase.auth.updateUser({ data: { full_name: name } });
+    setLoading(false);
+    if (error) return Alert.alert('Error', error.message);
+    router.replace('/(main)/connect');
   };
 
-  if (step === 'intro') {
+  if (step === 0) {
     return (
-      <SafeAreaView style={s.container}>
-        <ScrollView contentContainerStyle={s.scroll}>
-          <View style={s.introHeader}>
-            <Text style={s.welcomeLabel}>WELCOME TO</Text>
-            <Text style={s.appName}>BOCY</Text>
-            <Text style={s.introSubtitle}>
-              Your personal financial advisor — powered by data, designed around your life.
-            </Text>
+      <View style={s.container}>
+        <View style={s.inner}>
+          <Text style={s.emoji}>{'{'} B {'}'}</Text>
+          <Text style={s.title}>Welcome to Bocy</Text>
+          <Text style={s.body}>We analyse your bank transactions to give you personalised, actionable money moves.</Text>
+          <View style={s.bullets}>
+            <Text style={s.bullet}>See where your money really goes</Text>
+            <Text style={s.bullet}>Get moves tailored to your goals</Text>
+            <Text style={s.bullet}>No judgement — just clarity</Text>
           </View>
-
-          <View style={s.valuePoints}>
-            {VALUE_POINTS.map((point, i) => (
-              <View key={i} style={s.valuePoint}>
-                <View style={s.valueIconWrap}>
-                  <Ionicons name={point.icon} size={18} color={theme.colors.accent} />
-                </View>
-                <View style={s.valueContent}>
-                  <Text style={s.valueTitle}>{point.title}</Text>
-                  <Text style={s.valueDesc}>{point.desc}</Text>
-                </View>
-              </View>
-            ))}
-          </View>
-
-          <View style={s.promiseBox}>
-            <Text style={s.promiseText}>
-              We don't sell your data. We don't show ads. We simply help you make better financial decisions.
-            </Text>
-          </View>
-
-          <TouchableOpacity
-            style={s.continueBtn}
-            onPress={() => setStep('name')}
-            activeOpacity={0.8}
-          >
-            <Text style={s.continueBtnText}>Get Started</Text>
+          <TouchableOpacity style={s.btn} onPress={() => setStep(1)}>
+            <Text style={s.btnText}>Get started</Text>
           </TouchableOpacity>
-        </ScrollView>
-      </SafeAreaView>
+        </View>
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={s.container}>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
-        <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
-          <View style={s.nameHeader}>
-            <Text style={s.nameTitle}>What's your name?</Text>
-            <Text style={s.nameSubtitle}>
-              So we can personalise your experience.
-            </Text>
-          </View>
-
-          <View style={s.nameForm}>
-            <TextInput
-              style={s.input}
-              placeholder="First name"
-              placeholderTextColor={theme.colors.muted}
-              value={firstName}
-              onChangeText={setFirstName}
-              autoCapitalize="words"
-              textContentType="givenName"
-              autoFocus
-            />
-            <TextInput
-              style={s.input}
-              placeholder="Last name (optional)"
-              placeholderTextColor={theme.colors.muted}
-              value={lastName}
-              onChangeText={setLastName}
-              autoCapitalize="words"
-              textContentType="familyName"
-            />
-          </View>
-
-          {firstName.trim() ? (
-            <TouchableOpacity
-              style={[s.continueBtn, saving && s.continueBtnDisabled]}
-              onPress={handleSaveName}
-              disabled={saving}
-              activeOpacity={0.8}
-            >
-              {saving ? (
-                <ActivityIndicator color={theme.colors.bg} />
-              ) : (
-                <Text style={s.continueBtnText}>Continue</Text>
-              )}
-            </TouchableOpacity>
-          ) : null}
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+    <View style={s.container}>
+      <View style={s.inner}>
+        <Text style={s.title}>What's your name?</Text>
+        <Text style={s.sub}>So we know what to call you.</Text>
+        <TextInput
+          style={s.input}
+          placeholder="First name"
+          placeholderTextColor={colors.dim}
+          value={firstName}
+          onChangeText={setFirstName}
+          autoCapitalize="words"
+        />
+        <TextInput
+          style={s.input}
+          placeholder="Last name"
+          placeholderTextColor={colors.dim}
+          value={lastName}
+          onChangeText={setLastName}
+          autoCapitalize="words"
+        />
+        <TouchableOpacity style={s.btn} onPress={handleSaveName} disabled={loading}>
+          <Text style={s.btnText}>{loading ? 'Saving...' : 'Continue'}</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
   );
 }
 
 const s = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: theme.colors.bg,
-  },
-  scroll: {
-    paddingHorizontal: 28,
-    paddingTop: 60,
-    paddingBottom: 40,
-  },
-
-  // Intro screen
-  introHeader: {
-    alignItems: 'center',
-    marginBottom: 40,
-  },
-  welcomeLabel: {
-    fontFamily: 'SpaceMono',
-    fontSize: 11,
-    color: theme.colors.dim,
-    letterSpacing: 3,
-    marginBottom: 8,
-  },
-  appName: {
-    fontFamily: 'SpaceMono',
-    fontSize: 38,
-    fontWeight: '700',
-    color: theme.colors.accent,
-    letterSpacing: 8,
-    marginBottom: 16,
-  },
-  introSubtitle: {
-    fontSize: 16,
-    color: theme.colors.text2,
-    textAlign: 'center',
-    lineHeight: 24,
-  },
-  valuePoints: {
-    gap: 20,
-    marginBottom: 28,
-  },
-  valuePoint: {
-    flexDirection: 'row',
-    gap: 16,
-    alignItems: 'flex-start',
-  },
-  valueIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: theme.colors.accentDim,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  valueIcon: {
-    fontFamily: 'SpaceMono',
-    fontSize: 14,
-    fontWeight: '700',
-    color: theme.colors.accent,
-  },
-  valueContent: {
-    flex: 1,
-  },
-  valueTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: theme.colors.text,
-    marginBottom: 4,
-  },
-  valueDesc: {
-    fontSize: 14,
-    color: theme.colors.dim,
-    lineHeight: 21,
-  },
-  promiseBox: {
-    backgroundColor: 'rgba(114,232,176,0.06)',
-    borderRadius: theme.radius.md,
-    padding: 16,
-    borderLeftWidth: 3,
-    borderLeftColor: theme.colors.mint,
-    marginBottom: 32,
-  },
-  promiseText: {
-    fontSize: 14,
-    color: theme.colors.text2,
-    lineHeight: 21,
-  },
-
-  // Name screen
-  nameHeader: {
-    marginBottom: 32,
-  },
-  nameTitle: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: theme.colors.text,
-    marginBottom: 8,
-  },
-  nameSubtitle: {
-    fontSize: 15,
-    color: theme.colors.dim,
-    lineHeight: 22,
-  },
-  nameForm: {
-    gap: 12,
-    marginBottom: 28,
-  },
+  container: { flex: 1, backgroundColor: colors.bg },
+  inner: { flex: 1, justifyContent: 'center', paddingHorizontal: spacing.lg },
+  emoji: { fontFamily: fonts.mono, fontSize: 40, color: colors.accent, textAlign: 'center', marginBottom: spacing.md },
+  title: { fontFamily: fonts.mono, fontSize: 26, color: colors.text, textAlign: 'center', marginBottom: spacing.sm },
+  sub: { fontFamily: fonts.mono, fontSize: 13, color: colors.dim, textAlign: 'center', marginBottom: spacing.lg },
+  body: { fontFamily: fonts.mono, fontSize: 13, color: colors.text2, textAlign: 'center', lineHeight: 20, marginBottom: spacing.lg },
+  bullets: { marginBottom: spacing.xl },
+  bullet: { fontFamily: fonts.mono, fontSize: 13, color: colors.text2, marginBottom: spacing.sm, textAlign: 'center' },
   input: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.radius.md,
-    padding: 16,
-    color: theme.colors.text,
-    fontSize: 16,
+    fontFamily: fonts.mono, fontSize: 14, color: colors.text,
+    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
+    borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.sm,
   },
-
-  // Shared
-  continueBtn: {
-    backgroundColor: theme.colors.accent,
-    borderRadius: theme.radius.md,
-    padding: 18,
-    alignItems: 'center',
+  btn: {
+    backgroundColor: colors.accent, borderRadius: radius.md,
+    paddingVertical: 14, alignItems: 'center', marginTop: spacing.md,
   },
-  continueBtnDisabled: {
-    opacity: 0.6,
-  },
-  continueBtnText: {
-    fontFamily: 'SpaceMono',
-    fontSize: 14,
-    fontWeight: '700',
-    color: theme.colors.bg,
-    letterSpacing: 1,
-  },
+  btnText: { fontFamily: fonts.mono, fontSize: 15, color: colors.bg, fontWeight: '700' },
 });

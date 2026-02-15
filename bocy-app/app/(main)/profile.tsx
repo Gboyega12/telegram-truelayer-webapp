@@ -1,212 +1,144 @@
 import { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  SafeAreaView,
-  ScrollView,
-} from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, Linking } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { theme } from '../../theme';
-import { supabase } from '../../lib/supabase';
-import { confirm } from '../../lib/confirm';
+import { supabase } from '@/lib/supabase';
+import { confirm } from '@/lib/confirm';
+import { colors, fonts, spacing, radius } from '@/theme';
 
-type MenuItem = {
-  label: string;
-  icon: string;
-  onPress: () => void;
-  color?: string;
-};
-
-export default function ProfileScreen() {
-  const router = useRouter();
-  const [userName, setUserName] = useState('');
+export default function Profile() {
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [showSecurity, setShowSecurity] = useState(false);
+  const router = useRouter();
 
   useEffect(() => {
-    loadProfile();
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setName(user.user_metadata?.full_name || '');
+        setEmail(user.email || '');
+      }
+    })();
   }, []);
 
-  const loadProfile = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      setUserName(user.user_metadata?.full_name || '');
-      setEmail(user.email || '');
-    }
-  };
-
-  const handleSignOut = () => {
-    confirm(
-      'Sign out',
-      'Are you sure you want to sign out?',
-      async () => {
-        await supabase.auth.signOut();
-      },
-      'Sign out',
-    );
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    router.replace('/(auth)/sign-in');
   };
 
   const handleDeleteAccount = () => {
     confirm(
       'Delete account',
-      'This will permanently delete your account, all your analyses, goals, and personal data. This cannot be undone.',
+      'This will permanently delete your account and all data. This cannot be undone.',
       async () => {
         try {
           const { data: { session } } = await supabase.auth.getSession();
-          if (!session?.access_token) {
-            confirm('Error', 'Not authenticated. Please sign in again.', () => {});
-            return;
-          }
-          const apiUrl = process.env.EXPO_PUBLIC_API_URL || '';
-          const resp = await fetch(`${apiUrl}/api/delete-account`, {
+          if (!session) return Alert.alert('Error', 'Not signed in.');
+
+          const res = await fetch('/api/delete-account', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${session.access_token}`,
+              Authorization: `Bearer ${session.access_token}`,
             },
           });
-          if (!resp.ok) {
-            const err = await resp.json().catch(() => ({}));
-            throw new Error(err.detail || 'Failed to delete account');
+          const data = await res.json();
+          if (data.success) {
+            await supabase.auth.signOut();
+            router.replace('/(auth)/sign-in');
+          } else {
+            Alert.alert('Error', data.error || 'Failed to delete account.');
           }
-          await supabase.auth.signOut();
         } catch (err: any) {
-          confirm('Something went wrong', err.message || 'Please try again or contact support.', () => {});
+          Alert.alert('Error', err.message);
         }
       },
-      'Delete permanently',
-      true,
+      'Delete',
+      true
     );
   };
 
-  const menuItems: MenuItem[] = [
-    {
-      label: 'Add Account',
-      icon: 'add-circle-outline',
-      onPress: () => router.push('/(main)/connect' as any),
-    },
-    {
-      label: 'Report a Bug',
-      icon: 'bug-outline',
-      onPress: () => confirm('Report a Bug', 'Please email us at support@bocy.app with details of the issue.', () => {}),
-    },
-    {
-      label: 'Notifications',
-      icon: 'notifications-outline',
-      onPress: () => confirm('Notifications', 'Notification preferences will be available soon.', () => {}),
-    },
-    {
-      label: 'Goals',
-      icon: 'flag-outline',
-      onPress: () => router.push('/(main)/goals' as any),
-    },
-    {
-      label: 'Agreements',
-      icon: 'document-text-outline',
-      onPress: () => confirm('Agreements', 'Terms of service and privacy policy will be available soon.', () => {}),
-    },
-    {
-      label: 'Security',
-      icon: 'shield-checkmark-outline',
-      onPress: () => setShowSecurity(!showSecurity),
-    },
-  ];
-
-  const initial = userName ? userName.charAt(0).toUpperCase() : email.charAt(0).toUpperCase();
+  const initials = name
+    .split(' ')
+    .map((n) => n[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
 
   return (
-    <SafeAreaView style={s.container}>
-      <ScrollView contentContainerStyle={s.scroll}>
-        {/* Header with back */}
-        <View style={s.header}>
-          <TouchableOpacity onPress={() => router.back()} style={s.backBtn} activeOpacity={0.7}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-              <Ionicons name="arrow-back" size={16} color={theme.colors.accent} />
-              <Text style={s.backText}>Back</Text>
-            </View>
+    <ScrollView style={s.container} contentContainerStyle={s.scroll}>
+      {/* Avatar */}
+      <View style={s.avatarRow}>
+        <View style={s.avatar}>
+          <Text style={s.initials}>{initials || '?'}</Text>
+        </View>
+        <View>
+          <Text style={s.name}>{name}</Text>
+          <Text style={s.email}>{email}</Text>
+        </View>
+      </View>
+
+      {/* Menu */}
+      <MenuItem icon="add-circle-outline" label="Add Account" onPress={() => router.push('/(main)/connect')} />
+      <MenuItem icon="flag-outline" label="Goals" onPress={() => router.push('/(main)/goals')} />
+      <MenuItem icon="bug-outline" label="Report a Bug" onPress={() => Linking.openURL(`mailto:support@bocy.app?subject=Bug Report&body=Describe the issue...`)} />
+      <MenuItem icon="notifications-outline" label="Notifications" onPress={() => Alert.alert('Coming soon')} />
+      <MenuItem icon="document-text-outline" label="Agreements" onPress={() => Alert.alert('Coming soon')} />
+
+      {/* Security */}
+      <TouchableOpacity style={s.menuItem} onPress={() => setShowSecurity(!showSecurity)}>
+        <Ionicons name="shield-outline" size={20} color={colors.text2} />
+        <Text style={s.menuLabel}>Security</Text>
+        <Ionicons name={showSecurity ? 'chevron-up' : 'chevron-down'} size={16} color={colors.dim} style={{ marginLeft: 'auto' }} />
+      </TouchableOpacity>
+
+      {showSecurity && (
+        <View style={s.securityPanel}>
+          <TouchableOpacity style={s.securityBtn} onPress={handleSignOut}>
+            <Text style={s.signOutText}>Sign out</Text>
           </TouchableOpacity>
-          <Text style={s.headerTitle}>Profile</Text>
-          <View style={{ width: 60 }} />
+          <TouchableOpacity style={[s.securityBtn, s.deleteBtn]} onPress={handleDeleteAccount}>
+            <Text style={s.deleteText}>Delete account</Text>
+          </TouchableOpacity>
         </View>
+      )}
+    </ScrollView>
+  );
+}
 
-        {/* User info */}
-        <View style={s.userSection}>
-          <View style={s.avatar}>
-            <Text style={s.avatarText}>{initial}</Text>
-          </View>
-          <Text style={s.userName}>{userName || 'User'}</Text>
-          <Text style={s.userEmail}>{email}</Text>
-        </View>
-
-        {/* Menu items */}
-        <View style={s.menu}>
-          {menuItems.map((item, i) => (
-            <View key={i}>
-              <TouchableOpacity
-                style={s.menuItem}
-                onPress={item.onPress}
-                activeOpacity={0.7}
-              >
-                <View style={s.menuIconWrap}>
-                  <Ionicons name={item.icon as any} size={18} color={item.color || theme.colors.text2} />
-                </View>
-                <Text style={[s.menuLabel, item.color ? { color: item.color } : null]}>{item.label}</Text>
-                <Ionicons
-                  name={item.label === 'Security' ? (showSecurity ? 'chevron-down' : 'chevron-forward') : 'chevron-forward'}
-                  size={16}
-                  color={theme.colors.muted}
-                />
-              </TouchableOpacity>
-
-              {/* Security sub-menu */}
-              {item.label === 'Security' && showSecurity && (
-                <View style={s.securityMenu}>
-                  <TouchableOpacity style={s.securityItem} onPress={handleSignOut} activeOpacity={0.7}>
-                    <Text style={s.securityItemText}>Sign out</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={s.securityItem} onPress={handleDeleteAccount} activeOpacity={0.7}>
-                    <Text style={[s.securityItemText, { color: theme.colors.coral }]}>Delete account</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-            </View>
-          ))}
-        </View>
-      </ScrollView>
-    </SafeAreaView>
+function MenuItem({ icon, label, onPress }: { icon: string; label: string; onPress: () => void }) {
+  return (
+    <TouchableOpacity style={s.menuItem} onPress={onPress}>
+      <Ionicons name={icon as any} size={20} color={colors.text2} />
+      <Text style={s.menuLabel}>{label}</Text>
+      <Ionicons name="chevron-forward" size={16} color={colors.dim} style={{ marginLeft: 'auto' }} />
+    </TouchableOpacity>
   );
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.colors.bg },
-  scroll: { paddingBottom: 40 },
-
-  // Header
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 12, paddingBottom: 16 },
-  backBtn: { width: 60 },
-  backText: { fontSize: 14, color: theme.colors.accent },
-  headerTitle: { fontSize: 18, fontWeight: '700', color: theme.colors.text, textAlign: 'center' },
-
-  // User section
-  userSection: { alignItems: 'center', paddingVertical: 28 },
-  avatar: { width: 72, height: 72, borderRadius: 36, backgroundColor: theme.colors.accentDim, justifyContent: 'center', alignItems: 'center', marginBottom: 14 },
-  avatarText: { fontFamily: 'SpaceMono', fontSize: 28, fontWeight: '700', color: theme.colors.accent },
-  userName: { fontSize: 20, fontWeight: '700', color: theme.colors.text, marginBottom: 4 },
-  userEmail: { fontSize: 14, color: theme.colors.dim },
-
-  // Menu
-  menu: { paddingHorizontal: 20, marginTop: 8 },
-  menuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: theme.colors.border },
-  menuIconWrap: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.04)', justifyContent: 'center', alignItems: 'center', marginRight: 14 },
-  menuIcon: { fontSize: 16, color: theme.colors.text2 },
-  menuLabel: { flex: 1, fontSize: 16, color: theme.colors.text, fontWeight: '500' },
-  menuChevron: { fontSize: 14, color: theme.colors.muted },
-
-  // Security sub-menu
-  securityMenu: { paddingLeft: 50, backgroundColor: 'rgba(255,255,255,0.02)', borderRadius: theme.radius.sm, marginBottom: 4 },
-  securityItem: { paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: theme.colors.border },
-  securityItemText: { fontSize: 15, color: theme.colors.text2 },
+  container: { flex: 1, backgroundColor: colors.bg },
+  scroll: { paddingHorizontal: spacing.lg, paddingTop: 60, paddingBottom: 40 },
+  avatarRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginBottom: spacing.xl },
+  avatar: {
+    width: 56, height: 56, borderRadius: 28,
+    backgroundColor: colors.accentDim, alignItems: 'center', justifyContent: 'center',
+  },
+  initials: { fontFamily: fonts.mono, fontSize: 20, color: colors.accent, fontWeight: '700' },
+  name: { fontFamily: fonts.mono, fontSize: 18, color: colors.text },
+  email: { fontFamily: fonts.mono, fontSize: 12, color: colors.dim },
+  menuItem: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.border,
+  },
+  menuLabel: { fontFamily: fonts.mono, fontSize: 14, color: colors.text2 },
+  securityPanel: { paddingVertical: spacing.md },
+  securityBtn: {
+    borderWidth: 1, borderColor: colors.border, borderRadius: radius.md,
+    paddingVertical: 12, alignItems: 'center', marginBottom: spacing.sm,
+  },
+  signOutText: { fontFamily: fonts.mono, fontSize: 14, color: colors.text2 },
+  deleteBtn: { borderColor: colors.coral },
+  deleteText: { fontFamily: fonts.mono, fontSize: 14, color: colors.coral },
 });

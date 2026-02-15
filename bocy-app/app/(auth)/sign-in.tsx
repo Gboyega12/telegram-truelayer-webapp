@@ -1,18 +1,10 @@
 import { useState } from 'react';
 import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
-  ActivityIndicator,
+  View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { supabase } from '../../lib/supabase';
-import { theme } from '../../theme';
-import { confirm } from '../../lib/confirm';
+import { supabase } from '@/lib/supabase';
+import { colors, fonts, spacing, radius } from '@/theme';
 
 export default function SignIn() {
   const [email, setEmail] = useState('');
@@ -21,109 +13,65 @@ export default function SignIn() {
   const router = useRouter();
 
   const handleSignIn = async () => {
-    if (!email || !password) {
-      confirm('Missing fields', 'Please enter your email and password.', () => {});
-      return;
-    }
+    if (!email || !password) return Alert.alert('Error', 'Please fill in all fields.');
     setLoading(true);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
-    if (error) {
-      confirm('Sign in failed', error.message, () => {});
-    }
-    // AuthGate in _layout handles navigation on success
+    if (error) Alert.alert('Sign in failed', error.message);
+  };
+
+  const handleOAuth = async (provider: 'google' | 'apple') => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider,
+      options: { redirectTo: Platform.OS === 'web' ? window.location.origin : undefined },
+    });
+    if (error) Alert.alert('Error', error.message);
   };
 
   return (
-    <KeyboardAvoidingView
-      style={s.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
+    <KeyboardAvoidingView style={s.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={s.inner}>
-        {/* Logo */}
-        <View style={s.logoWrap}>
-          <Text style={s.logoText}>BOCY</Text>
-          <Text style={s.tagline}>Your personal financial advisor</Text>
-        </View>
+        <Text style={s.title}>Bocy</Text>
+        <Text style={s.subtitle}>Your personal money advisor</Text>
 
-        {/* Form */}
-        <View style={s.form}>
-          <TextInput
-            style={s.input}
-            placeholder="Email"
-            placeholderTextColor={theme.colors.muted}
-            value={email}
-            onChangeText={setEmail}
-            autoCapitalize="none"
-            keyboardType="email-address"
-            textContentType="emailAddress"
-          />
-          <TextInput
-            style={s.input}
-            placeholder="Password"
-            placeholderTextColor={theme.colors.muted}
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            textContentType="password"
-          />
+        <TextInput
+          style={s.input}
+          placeholder="Email"
+          placeholderTextColor={colors.dim}
+          value={email}
+          onChangeText={setEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
+        />
+        <TextInput
+          style={s.input}
+          placeholder="Password"
+          placeholderTextColor={colors.dim}
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+        />
 
-          <TouchableOpacity
-            style={[s.btn, loading && s.btnDisabled]}
-            onPress={handleSignIn}
-            disabled={loading}
-            activeOpacity={0.8}
-          >
-            {loading ? (
-              <ActivityIndicator color={theme.colors.bg} />
-            ) : (
-              <Text style={s.btnText}>Sign In</Text>
-            )}
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity style={s.btn} onPress={handleSignIn} disabled={loading}>
+          <Text style={s.btnText}>{loading ? 'Signing in...' : 'Sign in'}</Text>
+        </TouchableOpacity>
 
-        {/* Divider */}
         <View style={s.divider}>
-          <View style={s.dividerLine} />
-          <Text style={s.dividerText}>or</Text>
-          <View style={s.dividerLine} />
+          <View style={s.line} />
+          <Text style={s.orText}>or</Text>
+          <View style={s.line} />
         </View>
 
-        {/* Social auth */}
-        <TouchableOpacity
-          style={s.socialBtn}
-          onPress={() => {
-            supabase.auth.signInWithOAuth({
-              provider: 'google',
-              options: { redirectTo: 'bocyapp://auth/callback' },
-            });
-          }}
-          activeOpacity={0.8}
-        >
-          <Text style={s.socialBtnText}>Continue with Google</Text>
+        <TouchableOpacity style={s.oauthBtn} onPress={() => handleOAuth('google')}>
+          <Text style={s.oauthText}>Continue with Google</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={s.socialBtn}
-          onPress={() => {
-            supabase.auth.signInWithOAuth({
-              provider: 'apple',
-              options: { redirectTo: 'bocyapp://auth/callback' },
-            });
-          }}
-          activeOpacity={0.8}
-        >
-          <Text style={s.socialBtnText}>Continue with Apple</Text>
+        <TouchableOpacity style={s.oauthBtn} onPress={() => handleOAuth('apple')}>
+          <Text style={s.oauthText}>Continue with Apple</Text>
         </TouchableOpacity>
 
-        {/* Sign up link */}
-        <TouchableOpacity
-          style={s.linkWrap}
-          onPress={() => router.push('/(auth)/sign-up' as any)}
-        >
-          <Text style={s.linkText}>
-            Don't have an account? <Text style={s.linkAccent}>Sign up</Text>
-          </Text>
+        <TouchableOpacity onPress={() => router.push('/(auth)/sign-up')}>
+          <Text style={s.linkText}>Don't have an account? <Text style={s.linkAccent}>Sign up</Text></Text>
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
@@ -131,98 +79,28 @@ export default function SignIn() {
 }
 
 const s = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: theme.colors.bg,
-  },
-  inner: {
-    flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: 28,
-  },
-  logoWrap: {
-    alignItems: 'center',
-    marginBottom: 48,
-  },
-  logoText: {
-    fontFamily: 'SpaceMono',
-    fontSize: 42,
-    fontWeight: '700',
-    color: theme.colors.accent,
-    letterSpacing: 8,
-  },
-  tagline: {
-    fontSize: 14,
-    color: theme.colors.dim,
-    marginTop: 8,
-  },
-  form: {
-    gap: 12,
-  },
+  container: { flex: 1, backgroundColor: colors.bg },
+  inner: { flex: 1, justifyContent: 'center', paddingHorizontal: spacing.lg },
+  title: { fontFamily: fonts.mono, fontSize: 36, color: colors.accent, textAlign: 'center', marginBottom: spacing.xs },
+  subtitle: { fontFamily: fonts.mono, fontSize: 14, color: colors.dim, textAlign: 'center', marginBottom: spacing.xl },
   input: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.radius.md,
-    padding: 16,
-    color: theme.colors.text,
-    fontSize: 16,
+    fontFamily: fonts.mono, fontSize: 14, color: colors.text,
+    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
+    borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.sm,
   },
   btn: {
-    backgroundColor: theme.colors.accent,
-    borderRadius: theme.radius.md,
-    padding: 16,
-    alignItems: 'center',
-    marginTop: 4,
+    backgroundColor: colors.accent, borderRadius: radius.md,
+    paddingVertical: 14, alignItems: 'center', marginTop: spacing.sm,
   },
-  btnDisabled: {
-    opacity: 0.6,
+  btnText: { fontFamily: fonts.mono, fontSize: 15, color: colors.bg, fontWeight: '700' },
+  divider: { flexDirection: 'row', alignItems: 'center', marginVertical: spacing.lg },
+  line: { flex: 1, height: 1, backgroundColor: colors.border },
+  orText: { fontFamily: fonts.mono, fontSize: 12, color: colors.dim, marginHorizontal: spacing.sm },
+  oauthBtn: {
+    borderWidth: 1, borderColor: colors.border, borderRadius: radius.md,
+    paddingVertical: 14, alignItems: 'center', marginBottom: spacing.sm,
   },
-  btnText: {
-    fontFamily: 'SpaceMono',
-    fontSize: 14,
-    fontWeight: '700',
-    color: theme.colors.bg,
-    letterSpacing: 1,
-  },
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 24,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: theme.colors.border,
-  },
-  dividerText: {
-    color: theme.colors.muted,
-    fontSize: 12,
-    paddingHorizontal: 12,
-  },
-  socialBtn: {
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.radius.md,
-    padding: 16,
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  socialBtnText: {
-    color: theme.colors.text,
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  linkWrap: {
-    alignItems: 'center',
-    marginTop: 24,
-  },
-  linkText: {
-    color: theme.colors.dim,
-    fontSize: 14,
-  },
-  linkAccent: {
-    color: theme.colors.accent,
-    fontWeight: '600',
-  },
+  oauthText: { fontFamily: fonts.mono, fontSize: 14, color: colors.text },
+  linkText: { fontFamily: fonts.mono, fontSize: 13, color: colors.dim, textAlign: 'center', marginTop: spacing.lg },
+  linkAccent: { color: colors.accent },
 });

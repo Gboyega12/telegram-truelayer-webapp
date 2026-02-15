@@ -1,99 +1,44 @@
 import { useState } from 'react';
 import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
-  ActivityIndicator,
+  View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import { supabase } from '../../lib/supabase';
-import { theme } from '../../theme';
-import { confirm } from '../../lib/confirm';
+import { supabase } from '@/lib/supabase';
+import { colors, fonts, spacing, radius } from '@/theme';
 
 export default function SignUp() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [verificationSent, setVerificationSent] = useState(false);
-  const [resending, setResending] = useState(false);
+  const [sent, setSent] = useState(false);
   const router = useRouter();
 
   const handleSignUp = async () => {
-    if (!email || !password) {
-      confirm('Missing fields', 'Please enter your email and password.', () => {});
-      return;
-    }
-    if (password.length < 6) {
-      confirm('Weak password', 'Password must be at least 6 characters.', () => {});
-      return;
-    }
+    if (!email || !password) return Alert.alert('Error', 'Please fill in all fields.');
+    if (password.length < 6) return Alert.alert('Error', 'Password must be at least 6 characters.');
     setLoading(true);
     const { error } = await supabase.auth.signUp({ email, password });
     setLoading(false);
-    if (error) {
-      confirm('Sign up failed', error.message, () => {});
-    } else {
-      setVerificationSent(true);
-    }
+    if (error) return Alert.alert('Sign up failed', error.message);
+    setSent(true);
   };
 
   const handleResend = async () => {
-    setResending(true);
-    const { error } = await supabase.auth.resend({
-      type: 'signup',
-      email,
-    });
-    setResending(false);
-    if (error) {
-      confirm('Could not resend', error.message, () => {});
-    } else {
-      confirm('Email sent', 'We\'ve sent another verification link to your inbox.', () => {});
-    }
+    await supabase.auth.resend({ type: 'signup', email });
+    Alert.alert('Sent', 'Verification email resent.');
   };
 
-  if (verificationSent) {
+  if (sent) {
     return (
       <View style={s.container}>
         <View style={s.inner}>
-          <View style={s.verifyIconWrap}>
-            <Ionicons name="mail-outline" size={32} color={theme.colors.accent} />
-          </View>
-
-          <Text style={s.verifyTitle}>Check your inbox</Text>
-          <Text style={s.verifySubtitle}>
-            We've sent a verification link to
-          </Text>
-          <Text style={s.verifyEmail}>{email}</Text>
-          <Text style={s.verifyHint}>
-            Open the link in the email to verify your account, then come back here to sign in.
-          </Text>
-
-          <TouchableOpacity
-            style={s.btn}
-            onPress={() => router.back()}
-            activeOpacity={0.8}
-          >
-            <Text style={s.btnText}>Back to Sign In</Text>
+          <Text style={s.title}>Check your email</Text>
+          <Text style={s.subtitle}>We've sent a verification link to {email}</Text>
+          <TouchableOpacity style={s.btn} onPress={handleResend}>
+            <Text style={s.btnText}>Resend email</Text>
           </TouchableOpacity>
-
-          <TouchableOpacity
-            style={s.resendWrap}
-            onPress={handleResend}
-            disabled={resending}
-            activeOpacity={0.7}
-          >
-            {resending ? (
-              <ActivityIndicator color={theme.colors.accent} size="small" />
-            ) : (
-              <Text style={s.resendText}>
-                Didn't receive it? <Text style={s.resendAccent}>Resend email</Text>
-              </Text>
-            )}
+          <TouchableOpacity onPress={() => router.replace('/(auth)/sign-in')}>
+            <Text style={s.linkText}>Back to sign in</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -101,58 +46,35 @@ export default function SignUp() {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={s.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
+    <KeyboardAvoidingView style={s.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={s.inner}>
-        <View style={s.header}>
-          <Text style={s.title}>Create your account</Text>
-          <Text style={s.subtitle}>It only takes a moment to get started.</Text>
-        </View>
+        <Text style={s.title}>Create account</Text>
+        <Text style={s.subtitle}>Join Bocy and take control of your money</Text>
 
-        <View style={s.form}>
-          <TextInput
-            style={s.input}
-            placeholder="Email"
-            placeholderTextColor={theme.colors.muted}
-            value={email}
-            onChangeText={setEmail}
-            autoCapitalize="none"
-            keyboardType="email-address"
-            textContentType="emailAddress"
-          />
-          <TextInput
-            style={s.input}
-            placeholder="Password"
-            placeholderTextColor={theme.colors.muted}
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            textContentType="newPassword"
-          />
+        <TextInput
+          style={s.input}
+          placeholder="Email"
+          placeholderTextColor={colors.dim}
+          value={email}
+          onChangeText={setEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
+        />
+        <TextInput
+          style={s.input}
+          placeholder="Password (6+ characters)"
+          placeholderTextColor={colors.dim}
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+        />
 
-          <TouchableOpacity
-            style={[s.btn, loading && s.btnDisabled]}
-            onPress={handleSignUp}
-            disabled={loading}
-            activeOpacity={0.8}
-          >
-            {loading ? (
-              <ActivityIndicator color={theme.colors.bg} />
-            ) : (
-              <Text style={s.btnText}>Create Account</Text>
-            )}
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity style={s.btn} onPress={handleSignUp} disabled={loading}>
+          <Text style={s.btnText}>{loading ? 'Creating account...' : 'Sign up'}</Text>
+        </TouchableOpacity>
 
-        <TouchableOpacity
-          style={s.linkWrap}
-          onPress={() => router.back()}
-        >
-          <Text style={s.linkText}>
-            Already have an account? <Text style={s.linkAccent}>Sign in</Text>
-          </Text>
+        <TouchableOpacity onPress={() => router.push('/(auth)/sign-in')}>
+          <Text style={s.linkText}>Already have an account? <Text style={s.linkAccent}>Sign in</Text></Text>
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
@@ -160,119 +82,20 @@ export default function SignUp() {
 }
 
 const s = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: theme.colors.bg,
-  },
-  inner: {
-    flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: 28,
-  },
-  header: {
-    marginBottom: 36,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: theme.colors.text,
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 15,
-    color: theme.colors.dim,
-    lineHeight: 22,
-  },
-  form: {
-    gap: 12,
-  },
+  container: { flex: 1, backgroundColor: colors.bg },
+  inner: { flex: 1, justifyContent: 'center', paddingHorizontal: spacing.lg },
+  title: { fontFamily: fonts.mono, fontSize: 28, color: colors.text, textAlign: 'center', marginBottom: spacing.xs },
+  subtitle: { fontFamily: fonts.mono, fontSize: 13, color: colors.dim, textAlign: 'center', marginBottom: spacing.xl },
   input: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.radius.md,
-    padding: 16,
-    color: theme.colors.text,
-    fontSize: 16,
+    fontFamily: fonts.mono, fontSize: 14, color: colors.text,
+    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
+    borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.sm,
   },
   btn: {
-    backgroundColor: theme.colors.accent,
-    borderRadius: theme.radius.md,
-    padding: 16,
-    alignItems: 'center',
-    marginTop: 4,
+    backgroundColor: colors.accent, borderRadius: radius.md,
+    paddingVertical: 14, alignItems: 'center', marginTop: spacing.sm,
   },
-  btnDisabled: {
-    opacity: 0.6,
-  },
-  btnText: {
-    fontFamily: 'SpaceMono',
-    fontSize: 14,
-    fontWeight: '700',
-    color: theme.colors.bg,
-    letterSpacing: 1,
-  },
-  linkWrap: {
-    alignItems: 'center',
-    marginTop: 28,
-  },
-  linkText: {
-    color: theme.colors.dim,
-    fontSize: 14,
-  },
-  linkAccent: {
-    color: theme.colors.accent,
-    fontWeight: '600',
-  },
-
-  // Verification screen
-  verifyIconWrap: {
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  verifyIcon: {
-    fontSize: 48,
-    color: theme.colors.accent,
-  },
-  verifyTitle: {
-    fontSize: 26,
-    fontWeight: '700',
-    color: theme.colors.text,
-    textAlign: 'center',
-    marginBottom: 12,
-  },
-  verifySubtitle: {
-    fontSize: 15,
-    color: theme.colors.dim,
-    textAlign: 'center',
-    lineHeight: 22,
-  },
-  verifyEmail: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: theme.colors.accent,
-    textAlign: 'center',
-    marginTop: 4,
-    marginBottom: 16,
-  },
-  verifyHint: {
-    fontSize: 14,
-    color: theme.colors.muted,
-    textAlign: 'center',
-    lineHeight: 21,
-    marginBottom: 32,
-  },
-  resendWrap: {
-    alignItems: 'center',
-    marginTop: 20,
-    minHeight: 24,
-  },
-  resendText: {
-    color: theme.colors.dim,
-    fontSize: 14,
-  },
-  resendAccent: {
-    color: theme.colors.accent,
-    fontWeight: '600',
-  },
+  btnText: { fontFamily: fonts.mono, fontSize: 15, color: colors.bg, fontWeight: '700' },
+  linkText: { fontFamily: fonts.mono, fontSize: 13, color: colors.dim, textAlign: 'center', marginTop: spacing.lg },
+  linkAccent: { color: colors.accent },
 });
