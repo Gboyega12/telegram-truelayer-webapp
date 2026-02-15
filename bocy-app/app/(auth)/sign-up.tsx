@@ -18,6 +18,8 @@ export default function SignUp() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [verificationSent, setVerificationSent] = useState(false);
+  const [resending, setResending] = useState(false);
   const router = useRouter();
 
   const handleSignUp = async () => {
@@ -35,13 +37,67 @@ export default function SignUp() {
     if (error) {
       Alert.alert('Sign up failed', error.message);
     } else {
-      Alert.alert(
-        'Check your email',
-        'We sent you a confirmation link. Please verify your email to sign in.',
-        [{ text: 'OK', onPress: () => router.back() }]
-      );
+      setVerificationSent(true);
     }
   };
+
+  const handleResend = async () => {
+    setResending(true);
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email,
+    });
+    setResending(false);
+    if (error) {
+      Alert.alert('Could not resend', error.message);
+    } else {
+      Alert.alert('Email sent', 'We\'ve sent another verification link to your inbox.');
+    }
+  };
+
+  if (verificationSent) {
+    return (
+      <View style={s.container}>
+        <View style={s.inner}>
+          <View style={s.verifyIconWrap}>
+            <Text style={s.verifyIcon}>&#9993;</Text>
+          </View>
+
+          <Text style={s.verifyTitle}>Check your inbox</Text>
+          <Text style={s.verifySubtitle}>
+            We've sent a verification link to
+          </Text>
+          <Text style={s.verifyEmail}>{email}</Text>
+          <Text style={s.verifyHint}>
+            Open the link in the email to verify your account, then come back here to sign in.
+          </Text>
+
+          <TouchableOpacity
+            style={s.btn}
+            onPress={() => router.back()}
+            activeOpacity={0.8}
+          >
+            <Text style={s.btnText}>Back to Sign In</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={s.resendWrap}
+            onPress={handleResend}
+            disabled={resending}
+            activeOpacity={0.7}
+          >
+            {resending ? (
+              <ActivityIndicator color={theme.colors.accent} size="small" />
+            ) : (
+              <Text style={s.resendText}>
+                Didn't receive it? <Text style={s.resendAccent}>Resend email</Text>
+              </Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <KeyboardAvoidingView
@@ -50,8 +106,8 @@ export default function SignUp() {
     >
       <View style={s.inner}>
         <View style={s.header}>
-          <Text style={s.title}>Create account</Text>
-          <Text style={s.subtitle}>Start understanding your money in minutes</Text>
+          <Text style={s.title}>Create your account</Text>
+          <Text style={s.subtitle}>It only takes a moment to get started.</Text>
         </View>
 
         <View style={s.form}>
@@ -164,6 +220,57 @@ const s = StyleSheet.create({
     fontSize: 14,
   },
   linkAccent: {
+    color: theme.colors.accent,
+    fontWeight: '600',
+  },
+
+  // Verification screen
+  verifyIconWrap: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  verifyIcon: {
+    fontSize: 48,
+    color: theme.colors.accent,
+  },
+  verifyTitle: {
+    fontSize: 26,
+    fontWeight: '700',
+    color: theme.colors.text,
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  verifySubtitle: {
+    fontSize: 15,
+    color: theme.colors.dim,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  verifyEmail: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: theme.colors.accent,
+    textAlign: 'center',
+    marginTop: 4,
+    marginBottom: 16,
+  },
+  verifyHint: {
+    fontSize: 14,
+    color: theme.colors.muted,
+    textAlign: 'center',
+    lineHeight: 21,
+    marginBottom: 32,
+  },
+  resendWrap: {
+    alignItems: 'center',
+    marginTop: 20,
+    minHeight: 24,
+  },
+  resendText: {
+    color: theme.colors.dim,
+    fontSize: 14,
+  },
+  resendAccent: {
     color: theme.colors.accent,
     fontWeight: '600',
   },

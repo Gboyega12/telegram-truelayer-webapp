@@ -7,6 +7,7 @@ import {
   SafeAreaView,
   ScrollView,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { theme } from '../../theme';
@@ -20,43 +21,51 @@ type Analysis = {
   monthly_income: number;
   monthly_spending: number;
   surplus: number;
+  non_discretionary: any;
+  discretionary: any;
   top_move: any;
+  all_moves: any[];
 };
 
-export default function HistoryScreen() {
+export default function DashboardScreen() {
   const router = useRouter();
-  const [analyses, setAnalyses] = useState<Analysis[]>([]);
+  const [userName, setUserName] = useState('');
+  const [latest, setLatest] = useState<Analysis | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showProfile, setShowProfile] = useState(false);
 
   useEffect(() => {
-    loadHistory();
+    loadDashboard();
   }, []);
 
-  const loadHistory = async () => {
+  const loadDashboard = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data, error } = await supabase
+      const fullName = user.user_metadata?.full_name || '';
+      setUserName(fullName);
+
+      const { data } = await supabase
         .from('analyses')
-        .select('id, created_at, archetype, decision_score, monthly_income, monthly_spending, surplus, top_move')
+        .select('id, created_at, archetype, decision_score, monthly_income, monthly_spending, surplus, non_discretionary, discretionary, top_move, all_moves')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
-        .limit(20);
+        .limit(1);
 
-      if (!error && data) {
-        setAnalyses(data);
+      if (data && data.length > 0) {
+        setLatest(data[0]);
       }
     } catch (err) {
-      console.error('Failed to load history:', err);
+      console.error('Failed to load dashboard:', err);
     } finally {
       setLoading(false);
     }
   };
 
-  const formatDate = (iso: string) => {
-    const d = new Date(iso);
-    return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  const handleSignOut = async () => {
+    setShowProfile(false);
+    await supabase.auth.signOut();
   };
 
   const formatCurrency = (n: number) => {
@@ -64,102 +73,178 @@ export default function HistoryScreen() {
     return `£${Math.round(n)}`;
   };
 
-  const archetypeNames: Record<string, string> = {
-    debt_juggler: 'Debt Juggler',
-    quiet_builder: 'Quiet Builder',
-    edge_walker: 'Edge Walker',
-    subscription_collector: 'Subscription Collector',
-    impulse_surfer: 'Impulse Surfer',
-    convenience_seeker: 'Convenience Seeker',
-    comfort_spender: 'Comfort Spender',
-    lifestyle_investor: 'Lifestyle Investor',
-    side_hustler: 'Side Hustler',
-    balanced_realist: 'Balanced Realist',
+  const firstName = userName.split(' ')[0] || 'there';
+
+  // Pick the top 2 most actionable moves
+  const getTopMoves = (): { action: string; impact: number; effort: string }[] => {
+    if (!latest) return [];
+    const moves: any[] = latest.all_moves || [];
+    if (moves.length === 0 && latest.top_move?.action) {
+      return [{ action: latest.top_move.action, impact: latest.top_move.annualImpact || 0, effort: latest.top_move.effort || 'low' }];
+    }
+    return moves.slice(0, 2).map(m => ({
+      action: m.action,
+      impact: m.annualImpact || 0,
+      effort: m.effort || 'low',
+    }));
   };
+
+  const topMoves = getTopMoves();
+
+  // Budget breakdown
+  const nonDisc = latest?.non_discretionary?.total || 0;
+  const disc = latest?.discretionary?.total || 0;
+  const surplus = latest?.surplus || 0;
+  const totalSpending = nonDisc + disc;
+  const totalOut = totalSpending + Math.max(surplus, 0);
+
+  const nonDiscPct = totalOut > 0 ? Math.round((nonDisc / totalOut) * 100) : 0;
+  const discPct = totalOut > 0 ? Math.round((disc / totalOut) * 100) : 0;
+  const surplusPct = totalOut > 0 ? Math.round((Math.max(surplus, 0) / totalOut) * 100) : 0;
 
   return (
     <SafeAreaView style={s.container}>
+      {/* Profile dropdown modal */}
+      <Modal
+        visible={showProfile}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowProfile(false)}
+      >
+        <TouchableOpacity
+          style={s.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowProfile(false)}
+        >
+          <View style={s.profileMenu}>
+            <Text style={s.profileMenuName}>{userName || 'Account'}</Text>
+            <TouchableOpacity style={s.profileMenuItem} onPress={handleSignOut}>
+              <Text style={s.profileMenuItemText}>Sign out</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
       <ScrollView contentContainerStyle={s.scroll}>
+        {/* Header: greeting + profile icon */}
         <View style={s.header}>
-          <Text style={s.logo}>BOCY</Text>
-          <Text style={s.title}>Analysis History</Text>
+          <View style={s.greeting}>
+            <Text style={s.greetingText}>Hi, {firstName}</Text>
+          </View>
+          <TouchableOpacity
+            style={s.profileIcon}
+            onPress={() => setShowProfile(true)}
+            activeOpacity={0.7}
+          >
+            <Text style={s.profileInitial}>
+              {firstName.charAt(0).toUpperCase()}
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {loading ? (
           <View style={s.loadingWrap}>
             <ActivityIndicator color={theme.colors.accent} />
           </View>
-        ) : analyses.length === 0 ? (
+        ) : !latest ? (
           <View style={s.emptyWrap}>
-            <Text style={s.emptyText}>No analyses yet.</Text>
-            <Text style={s.emptySubtext}>Connect your bank or upload a CSV to get started.</Text>
+            <Text style={s.emptyTitle}>Welcome aboard</Text>
+            <Text style={s.emptySubtext}>
+              Connect your bank or upload a statement to get your first personalised financial analysis.
+            </Text>
             <TouchableOpacity
               style={s.startBtn}
-              onPress={() => router.replace('/(main)/connect' as any)}
+              onPress={() => router.push('/(main)/connect' as any)}
               activeOpacity={0.8}
             >
-              <Text style={s.startBtnText}>Get started</Text>
+              <Text style={s.startBtnText}>Start your analysis</Text>
             </TouchableOpacity>
           </View>
         ) : (
-          <View style={s.list}>
-            {analyses.map((a) => (
-              <View key={a.id} style={s.card}>
-                <View style={s.cardHeader}>
-                  <Text style={s.cardDate}>{formatDate(a.created_at)}</Text>
-                  <View style={s.scoreBadge}>
-                    <Text style={s.scoreText}>{a.decision_score}</Text>
-                  </View>
-                </View>
+          <>
+            {/* Card 1: Monthly Income */}
+            <View style={s.card}>
+              <Text style={s.cardLabel}>Monthly Income</Text>
+              <Text style={s.cardBigNumber}>{formatCurrency(latest.monthly_income)}</Text>
+            </View>
 
-                <Text style={s.archetype}>
-                  {archetypeNames[a.archetype] || a.archetype}
-                </Text>
+            {/* Card 2: Your Budget Reality */}
+            <View style={s.card}>
+              <Text style={s.cardLabel}>Your Budget Reality</Text>
 
-                <View style={s.cardMetrics}>
-                  <View style={s.metric}>
-                    <Text style={s.metricLabel}>Income</Text>
-                    <Text style={[s.metricValue, { color: theme.colors.mint }]}>
-                      {formatCurrency(a.monthly_income)}
-                    </Text>
-                  </View>
-                  <View style={s.metric}>
-                    <Text style={s.metricLabel}>Spending</Text>
-                    <Text style={[s.metricValue, { color: theme.colors.coral }]}>
-                      {formatCurrency(a.monthly_spending)}
-                    </Text>
-                  </View>
-                  <View style={s.metric}>
-                    <Text style={s.metricLabel}>Surplus</Text>
-                    <Text style={[s.metricValue, { color: a.surplus >= 0 ? theme.colors.mint : theme.colors.coral }]}>
-                      {a.surplus >= 0 ? '+' : ''}{formatCurrency(a.surplus)}
-                    </Text>
-                  </View>
-                </View>
-
-                {a.top_move?.action && (
-                  <View style={s.topMoveWrap}>
-                    <Text style={s.topMoveLabel}>#1 Move</Text>
-                    <Text style={s.topMoveAction} numberOfLines={2}>{a.top_move.action}</Text>
-                    {a.top_move.annualImpact > 0 && (
-                      <Text style={s.topMoveImpact}>
-                        {formatCurrency(a.top_move.annualImpact)}/yr impact
-                      </Text>
-                    )}
-                  </View>
+              {/* Visual bar */}
+              <View style={s.budgetBar}>
+                {nonDiscPct > 0 && (
+                  <View style={[s.budgetBarSeg, { flex: nonDiscPct, backgroundColor: theme.colors.coral }]} />
+                )}
+                {discPct > 0 && (
+                  <View style={[s.budgetBarSeg, { flex: discPct, backgroundColor: theme.colors.sky }]} />
+                )}
+                {surplusPct > 0 && (
+                  <View style={[s.budgetBarSeg, { flex: surplusPct, backgroundColor: theme.colors.mint }]} />
                 )}
               </View>
-            ))}
-          </View>
-        )}
 
-        <TouchableOpacity
-          style={s.newBtn}
-          onPress={() => router.replace('/(main)/connect' as any)}
-          activeOpacity={0.8}
-        >
-          <Text style={s.newBtnText}>New analysis</Text>
-        </TouchableOpacity>
+              <View style={s.budgetLegend}>
+                <View style={s.budgetLegendItem}>
+                  <View style={[s.legendDot, { backgroundColor: theme.colors.coral }]} />
+                  <Text style={s.legendText}>Essentials</Text>
+                  <Text style={[s.legendValue, { color: theme.colors.coral }]}>{formatCurrency(nonDisc)}</Text>
+                </View>
+                <View style={s.budgetLegendItem}>
+                  <View style={[s.legendDot, { backgroundColor: theme.colors.sky }]} />
+                  <Text style={s.legendText}>Lifestyle</Text>
+                  <Text style={[s.legendValue, { color: theme.colors.sky }]}>{formatCurrency(disc)}</Text>
+                </View>
+                <View style={s.budgetLegendItem}>
+                  <View style={[s.legendDot, { backgroundColor: surplus >= 0 ? theme.colors.mint : theme.colors.coral }]} />
+                  <Text style={s.legendText}>Surplus</Text>
+                  <Text style={[s.legendValue, { color: surplus >= 0 ? theme.colors.mint : theme.colors.coral }]}>
+                    {surplus >= 0 ? '+' : ''}{formatCurrency(surplus)}
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Card 3: Recommendations */}
+            <View style={s.card}>
+              <Text style={s.cardLabel}>Recommendations</Text>
+
+              {topMoves.length > 0 ? (
+                <View style={s.movesList}>
+                  {topMoves.map((move, i) => (
+                    <View key={i} style={s.moveRow}>
+                      <View style={s.moveNumber}>
+                        <Text style={s.moveNumberText}>{i + 1}</Text>
+                      </View>
+                      <View style={s.moveContent}>
+                        <Text style={s.moveAction}>{move.action}</Text>
+                        {move.impact > 0 && (
+                          <Text style={s.moveImpact}>
+                            Potential impact: {formatCurrency(move.impact)}/year
+                          </Text>
+                        )}
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              ) : (
+                <Text style={s.noMovesText}>
+                  Run an analysis to receive personalised recommendations.
+                </Text>
+              )}
+            </View>
+
+            {/* Run new analysis */}
+            <TouchableOpacity
+              style={s.newBtn}
+              onPress={() => router.push('/(main)/connect' as any)}
+              activeOpacity={0.8}
+            >
+              <Text style={s.newBtnText}>Run new analysis</Text>
+            </TouchableOpacity>
+          </>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -175,21 +260,72 @@ const s = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 60,
   },
+
+  // Header
   header: {
-    marginBottom: 24,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 28,
   },
-  logo: {
-    fontFamily: 'SpaceMono',
-    fontSize: 14,
-    color: theme.colors.accent,
-    letterSpacing: 4,
-    marginBottom: 8,
-  },
-  title: {
+  greeting: {},
+  greetingText: {
     fontSize: 26,
     fontWeight: '700',
     color: theme.colors.text,
   },
+  profileIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: theme.colors.accentDim,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  profileInitial: {
+    fontFamily: 'SpaceMono',
+    fontSize: 16,
+    fontWeight: '700',
+    color: theme.colors.accent,
+  },
+
+  // Profile menu
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-start',
+    alignItems: 'flex-end',
+    paddingTop: 70,
+    paddingRight: 20,
+  },
+  profileMenu: {
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radius.md,
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    minWidth: 180,
+  },
+  profileMenuName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: theme.colors.text,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+  },
+  profileMenuItem: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  profileMenuItemText: {
+    fontSize: 14,
+    color: theme.colors.coral,
+  },
+
+  // Loading / Empty
   loadingWrap: {
     paddingVertical: 60,
     alignItems: 'center',
@@ -198,16 +334,17 @@ const s = StyleSheet.create({
     paddingVertical: 60,
     alignItems: 'center',
   },
-  emptyText: {
-    fontSize: 18,
-    color: theme.colors.text,
+  emptyTitle: {
+    fontSize: 20,
     fontWeight: '600',
+    color: theme.colors.text,
     marginBottom: 8,
   },
   emptySubtext: {
     fontSize: 14,
     color: theme.colors.dim,
     textAlign: 'center',
+    lineHeight: 21,
     marginBottom: 24,
   },
   startBtn: {
@@ -222,108 +359,126 @@ const s = StyleSheet.create({
     fontWeight: '700',
     color: theme.colors.bg,
   },
-  list: {
-    gap: 12,
-  },
+
+  // Cards
   card: {
     backgroundColor: theme.colors.surface,
     borderWidth: 1,
     borderColor: theme.colors.border,
     borderRadius: theme.radius.lg,
-    padding: 18,
+    padding: 20,
+    marginBottom: 14,
   },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  cardDate: {
-    fontSize: 13,
-    color: theme.colors.dim,
+  cardLabel: {
     fontFamily: 'SpaceMono',
-  },
-  scoreBadge: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    borderWidth: 2,
-    borderColor: theme.colors.accent,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  scoreText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: theme.colors.accent,
-    fontFamily: 'SpaceMono',
-  },
-  archetype: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: theme.colors.text,
-    marginBottom: 12,
-  },
-  cardMetrics: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 12,
-  },
-  metric: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 8,
-    backgroundColor: 'rgba(255,255,255,0.02)',
-    borderRadius: theme.radius.sm,
-  },
-  metricLabel: {
     fontSize: 11,
     color: theme.colors.dim,
-    marginBottom: 2,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginBottom: 12,
   },
-  metricValue: {
-    fontSize: 15,
+  cardBigNumber: {
+    fontSize: 34,
     fontWeight: '700',
+    color: theme.colors.text,
     fontFamily: 'SpaceMono',
   },
-  topMoveWrap: {
-    backgroundColor: 'rgba(232,200,114,0.06)',
-    borderRadius: theme.radius.sm,
-    padding: 12,
-    borderLeftWidth: 3,
-    borderLeftColor: theme.colors.accent,
+
+  // Budget reality
+  budgetBar: {
+    flexDirection: 'row',
+    height: 8,
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginBottom: 16,
+    gap: 2,
   },
-  topMoveLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: theme.colors.accent,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    marginBottom: 4,
+  budgetBarSeg: {
+    borderRadius: 4,
   },
-  topMoveAction: {
+  budgetLegend: {
+    gap: 10,
+  },
+  budgetLegendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  legendDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  legendText: {
+    flex: 1,
     fontSize: 14,
     color: theme.colors.text2,
-    lineHeight: 20,
   },
-  topMoveImpact: {
-    fontSize: 12,
-    color: theme.colors.dim,
+  legendValue: {
+    fontSize: 14,
+    fontFamily: 'SpaceMono',
+    fontWeight: '600',
+  },
+
+  // Recommendations
+  movesList: {
+    gap: 14,
+  },
+  moveRow: {
+    flexDirection: 'row',
+    gap: 14,
+    alignItems: 'flex-start',
+  },
+  moveNumber: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: theme.colors.accentDim,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  moveNumberText: {
+    fontFamily: 'SpaceMono',
+    fontSize: 13,
+    fontWeight: '700',
+    color: theme.colors.accent,
+  },
+  moveContent: {
+    flex: 1,
+  },
+  moveAction: {
+    fontSize: 15,
+    color: theme.colors.text,
+    lineHeight: 22,
+    fontWeight: '500',
+  },
+  moveImpact: {
+    fontSize: 13,
+    color: theme.colors.mint,
     fontFamily: 'SpaceMono',
     marginTop: 4,
   },
+  noMovesText: {
+    fontSize: 14,
+    color: theme.colors.dim,
+    lineHeight: 21,
+  },
+
+  // New analysis
   newBtn: {
     borderWidth: 1,
-    borderColor: theme.colors.border,
+    borderColor: theme.colors.accent,
     borderRadius: theme.radius.md,
     padding: 16,
     alignItems: 'center',
-    marginTop: 20,
+    marginTop: 6,
   },
   newBtnText: {
     fontFamily: 'SpaceMono',
     fontSize: 13,
-    color: theme.colors.dim,
+    color: theme.colors.accent,
+    fontWeight: '600',
     letterSpacing: 1,
   },
 });

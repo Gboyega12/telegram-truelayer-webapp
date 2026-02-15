@@ -36,11 +36,11 @@ export default function ConnectScreen() {
             params: { csvData: decodeURIComponent(csvData), source: 'bank' },
           });
         } else {
-          Alert.alert('Connection issue', 'Could not retrieve transaction data. Please try again.');
+          Alert.alert('Connection issue', 'We couldn\'t retrieve your transaction data. Please try again.');
         }
       }
     } catch (error) {
-      Alert.alert('Error', 'Bank connection failed. Please try again.');
+      Alert.alert('Something went wrong', 'The bank connection didn\'t go through. Please try again.');
     }
     setLoading(false);
   };
@@ -63,11 +63,11 @@ export default function ConnectScreen() {
             params: { csvData, source: 'csv' },
           });
         } else {
-          Alert.alert('Invalid file', 'The file appears to be empty or invalid.');
+          Alert.alert('Hmm, that doesn\'t look right', 'The file appears to be empty or isn\'t a valid CSV. Please try another.');
         }
       }
     } catch (error) {
-      Alert.alert('Error', 'Could not read the file. Please try a CSV file.');
+      Alert.alert('Something went wrong', 'We couldn\'t read that file. Please make sure it\'s a CSV export from your bank.');
     }
   };
 
@@ -76,11 +76,9 @@ export default function ConnectScreen() {
       <View style={s.inner}>
         {/* Header */}
         <View style={s.header}>
-          <Text style={s.logo}>BOCY</Text>
           <Text style={s.title}>Connect your bank</Text>
           <Text style={s.subtitle}>
-            We analyse your transactions to find your single most impactful financial move.
-            Your data never leaves your device.
+            We'll review your transactions to find personalised ways to improve your finances. Your data stays private and secure.
           </Text>
         </View>
 
@@ -97,7 +95,7 @@ export default function ConnectScreen() {
             </View>
             <View style={s.btnContent}>
               <Text style={s.primaryBtnTitle}>Connect via Open Banking</Text>
-              <Text style={s.primaryBtnSub}>Secure, read-only access. Powered by TrueLayer.</Text>
+              <Text style={s.primaryBtnSub}>Secure, read-only access via TrueLayer</Text>
             </View>
           </TouchableOpacity>
 
@@ -149,13 +147,6 @@ const s = StyleSheet.create({
   },
   header: {
     marginBottom: 40,
-  },
-  logo: {
-    fontFamily: 'SpaceMono',
-    fontSize: 18,
-    color: theme.colors.accent,
-    letterSpacing: 4,
-    marginBottom: 24,
   },
   title: {
     fontSize: 28,

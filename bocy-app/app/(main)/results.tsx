@@ -66,7 +66,6 @@ export default function ResultsScreen() {
         <Animated.View style={{ opacity: fadeAnim }}>
           {/* Header */}
           <View style={s.header}>
-            <Text style={s.logo}>BOCY</Text>
             <Text style={s.headerTitle}>Your Financial Picture</Text>
           </View>
 
@@ -191,7 +190,7 @@ export default function ResultsScreen() {
           {moveResult?.topMove && (
             <View style={s.moveCard}>
               <View style={s.moveHeader}>
-                <Text style={s.moveLabel}>YOUR #1 MOVE</Text>
+                <Text style={s.moveLabel}>TOP RECOMMENDATION</Text>
                 {moveResult.goal && (
                   <Text style={s.moveGoalTag}>{moveResult.goal.label}</Text>
                 )}
@@ -256,8 +255,8 @@ export default function ResultsScreen() {
                   style={s.approveBtn}
                   onPress={() =>
                     Alert.alert(
-                      'Coming at launch',
-                      'When Bocy launches, you\'ll be able to approve moves and we\'ll set up automatic execution — transfers, payment adjustments, and reminders — all handled for you.',
+                      'Coming soon',
+                      'Soon you\'ll be able to approve recommendations and we\'ll help set up automatic transfers, payment adjustments, and reminders for you.',
                       [{ text: 'Got it' }]
                     )
                   }
@@ -320,7 +319,7 @@ export default function ResultsScreen() {
           {/* Other Moves */}
           {moveResult && moveResult.allScored?.length > 1 && (
             <View style={s.card}>
-              <Text style={s.cardTitle}>Other Moves</Text>
+              <Text style={s.cardTitle}>More Recommendations</Text>
               {moveResult.allScored.slice(1).map((scored: any, i: number) => (
                 <View key={i} style={s.otherMoveRow}>
                   <View style={s.otherMoveInfo}>
@@ -350,7 +349,7 @@ export default function ResultsScreen() {
 
           {/* Personality Card (secondary insight) */}
           <View style={s.card}>
-            <Text style={s.cardTitle}>Your Money Personality</Text>
+            <Text style={s.cardTitle}>Your Financial Profile</Text>
             <View style={s.personalityHeader}>
               <Text style={s.personalityName}>{archetype?.name || 'Balanced Realist'}</Text>
               <View style={s.scoreCircle}>
@@ -411,13 +410,6 @@ const s = StyleSheet.create({
   },
   header: {
     marginBottom: 24,
-  },
-  logo: {
-    fontFamily: 'SpaceMono',
-    fontSize: 14,
-    color: theme.colors.accent,
-    letterSpacing: 4,
-    marginBottom: 8,
   },
   headerTitle: {
     fontSize: 26,

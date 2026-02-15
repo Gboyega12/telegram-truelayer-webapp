@@ -43,7 +43,7 @@ export default function SignIn() {
         {/* Logo */}
         <View style={s.logoWrap}>
           <Text style={s.logoText}>BOCY</Text>
-          <Text style={s.tagline}>Your AI financial strategist</Text>
+          <Text style={s.tagline}>Your personal financial advisor</Text>
         </View>
 
         {/* Form */}

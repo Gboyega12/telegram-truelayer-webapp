@@ -11,11 +11,11 @@ import { theme } from '../../theme';
 import { supabase } from '../../lib/supabase';
 
 const STEPS = [
-  { label: 'Reading transactions', duration: 1500 },
-  { label: 'Identifying merchants', duration: 2000 },
-  { label: 'Detecting patterns', duration: 2000 },
-  { label: 'Analysing against your goals', duration: 1500 },
-  { label: 'Finding your #1 move', duration: 1000 },
+  { label: 'Reading your transactions', duration: 1500 },
+  { label: 'Recognising merchants', duration: 2000 },
+  { label: 'Spotting patterns in your spending', duration: 2000 },
+  { label: 'Aligning with your goals', duration: 1500 },
+  { label: 'Building your recommendations', duration: 1000 },
 ];
 
 export default function ProcessingScreen() {
@@ -93,7 +93,7 @@ export default function ProcessingScreen() {
   return (
     <SafeAreaView style={s.container}>
       <Animated.View style={[s.inner, { opacity: fadeAnim }]}>
-        <Text style={s.logo}>BOCY</Text>
+        <Text style={s.logo}>Analysing</Text>
 
         <View style={s.stepsWrap}>
           {STEPS.map((step, i) => (
@@ -122,7 +122,7 @@ export default function ProcessingScreen() {
             <Text style={s.errorText}>{error}</Text>
           </View>
         ) : (
-          <Text style={s.hint}>This usually takes a few seconds</Text>
+          <Text style={s.hint}>This usually takes just a moment</Text>
         )}
       </Animated.View>
     </SafeAreaView>
