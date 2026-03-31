@@ -37,7 +37,19 @@
 </head>
 <body>
 <canvas id="ascii-bg"></canvas>
-<div id="root"></div>
+<div id="root"><div style="color:#888;text-align:center;padding:4rem 1rem;font-family:monospace">Loading BOCY...</div></div>
+<script>
+window.onerror=function(msg,src,line){
+  document.getElementById('root').innerHTML='<div style="color:#E87272;text-align:center;padding:2rem;font-family:monospace"><p>Something went wrong:</p><p style="font-size:0.8rem;color:#888;margin-top:1rem">'+msg+'</p></div>';
+};
+// Detect if Babel standalone failed to load or compile
+setTimeout(function(){
+  var root=document.getElementById('root');
+  if(root&&root.textContent.trim()==='Loading BOCY...'){
+    root.innerHTML='<div style="color:#E87272;text-align:center;padding:2rem;font-family:monospace"><p>Failed to load app.</p><p style="font-size:0.8rem;color:#888;margin-top:1rem">Please refresh the page. If the problem persists, try a different browser or clear your cache.</p></div>';
+  }
+},10000);
+</script>
 <script type="text/babel">
 const {useState,useEffect,useRef}=React;
 const CONFIG={googleScript:'https://script.google.com/macros/s/AKfycbxwOJ7DwZo4z3jiW25aH6nu5cC3qkIQs-GIizz0-xyeaoxe5Hdxg1TK3jxl_K1yJpIFRg/exec',landingPage:'https://www.bocy.io'};
